@@ -1,211 +1,217 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { FiMail, FiLock, FiShield, FiArrowRight, FiCheckCircle } from 'react-icons/fi';
+import { OrbBackground, Spinner } from './DesignSystem';
 
 export const Login: React.FC = () => {
-  const [email, setEmail] = useState('');
+  const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  
-  const { login } = useAuth();
-  const navigate = useNavigate();
+  const [showPass, setShowPass] = useState(false);
+  const [error, setError]       = useState('');
+  const [loading, setLoading]   = useState(false);
+
+  const { login }  = useAuth();
+  const navigate   = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setLoading(true);
-
+    setError(''); setLoading(true);
     try {
-      const loggedInUser = await login(email, password);
-
-      if (!loggedInUser) {
-        setError('Login failed');
-        return;
-      }
-
-      if (loggedInUser.role === 'owner'){
-        setError('This login is for students only. Please use the Owner Portal.');
-        return;
-      }
-
-      if (loggedInUser.role === 'admin'){
-        navigate('/admin');
-      } else {
-        navigate('/dashboard');
-      }
+      const user = await login(email, password);
+      if (!user) { setError('Login failed'); return; }
+      if (user.role === 'owner') { setError('Use the Owner Portal for owner accounts.'); return; }
+      navigate(user.role === 'admin' ? '/admin' : '/dashboard');
     } catch (err: any) {
-      if (err.message?.includes('verify') || err.message?.includes('not verified')) {
-        navigate('/verify-email', { state: { email: email } });
-        return;
-      }
-      setError(err.message || 'Error connecting to server');
-    } finally {
-      setLoading(false);
-    }
+      if (err.message?.includes('verify')) { navigate('/verify-email', { state: { email } }); return; }
+      setError(err.message || 'Connection error');
+    } finally { setLoading(false); }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
-      {/* Animated Background Elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" style={{ animationDelay: '1s' }}></div>
-      </div>
-
-      <div className="max-w-4xl w-full flex bg-white rounded-3xl shadow-2xl overflow-hidden relative z-10">
-        {/* Left Side: Illustration/Branding */}
-        <div className="hidden lg:flex lg:w-1/2 bg-blue-600 p-12 text-white flex-col justify-between relative">
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-600 to-indigo-700 opacity-90"></div>
-          <div className="relative z-10">
-            <Link to="/" className="flex items-center space-x-2 text-2xl font-bold mb-12">
-              <FiShield className="h-8 w-8 text-yellow-400" />
-              <span>SafetyFirst</span>
+    <>
+      <style>{CSS}</style>
+      <OrbBackground intensity="normal">
+        <div className="login-page">
+          {/* Left panel */}
+          <aside className="login-left fade-up">
+            <Link to="/" className="brand">
+              <span className="brand-icon">⬡</span>
+              <span className="brand-name">SafeStay</span>
             </Link>
-            
-            <h2 className="text-4xl font-extrabold mb-6 leading-tight">
-              Join the community of <span className="text-yellow-400">10,000+</span> students making safer choices.
-            </h2>
-            
-            <div className="space-y-4">
-              {[
-                "Verified safety reports with evidence",
-                "Real trust scores for every PG/Hostel",
-                "Direct accountability from owners"
-              ].map((item, i) => (
-                <div key={i} className="flex items-center space-x-3">
-                  <FiCheckCircle className="text-green-400 flex-shrink-0" />
-                  <span className="text-blue-50/90 font-medium">{item}</span>
-                </div>
-              ))}
+
+            <div className="left-body">
+              <h1 className="left-headline">
+                Know before<br />
+                <em>you move in.</em>
+              </h1>
+              <p className="left-sub">
+                Real safety data from verified residents. No fake reviews. Just accountability.
+              </p>
+
+              <ul className="feature-list">
+                {FEATURES.map((f, i) => (
+                  <li key={i} className="feature-item fade-up" style={{ animationDelay: `${0.15 + i * 0.08}s` }}>
+                    <span className="feature-dot" style={{ background: f.color }} />
+                    <div>
+                      <strong>{f.title}</strong>
+                      <span>{f.desc}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </div>
-          </div>
-          
-          <div className="relative z-10">
-            <p className="text-blue-100 text-sm">
-              "Found water quality issues in 3 PGs near my college BEFORE signing any lease. This platform saved me from a nightmare."
-            </p>
-            <p className="mt-2 font-bold text-yellow-400">— Priya S., Student</p>
-          </div>
-        </div>
 
-        {/* Right Side: Form */}
-        <div className="w-full lg:w-1/2 p-8 sm:p-12">
-          <div className="mb-10 text-center lg:text-left">
-            <h2 className="text-3xl font-extrabold text-gray-900 mb-2">
-              Welcome Back, Safety Champion
-            </h2>
-            <p className="text-gray-500">
-              Access your personalized safety dashboard
-            </p>
-          </div>
+            <blockquote className="testimonial fade-up fade-up-5">
+              <p>"Found water issues in 3 PGs near my college BEFORE signing. Saved me from a nightmare."</p>
+              <cite>— Priya S., Engineering Student</cite>
+            </blockquote>
+          </aside>
 
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm flex items-center">
-                <FiShield className="mr-2 h-4 w-4 rotate-180" />
-                {error}
-              </div>
-            )}
-            
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="email-address" className="block text-sm font-semibold text-gray-700 mb-1">
-                  Your registered email
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <FiMail className="h-5 w-5 text-gray-400" />
+          {/* Right panel */}
+          <main className="login-right">
+            <div className="form-card glass-hi fade-up fade-up-2">
+              <p className="form-eyebrow">Student Portal</p>
+              <h2 className="form-heading">Welcome back</h2>
+              <p className="form-sub">Access your safety dashboard and reports.</p>
+
+              {error && <div className="ss-error" style={{ marginBottom: 20 }}>{error}</div>}
+
+              <form onSubmit={handleSubmit}>
+                <div className="field-group">
+                  <label className="field-label">Email Address</label>
+                  <div className="field-wrap">
+                    <span className="fi">✉</span>
+                    <input type="email" className="ss-input ss-input-icon"
+                      placeholder="you@university.edu"
+                      value={email} onChange={e => setEmail(e.target.value)} required />
                   </div>
-                  <input
-                    id="email-address"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                    className="block w-full pl-10 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none text-gray-900 placeholder-gray-400"
-                    placeholder="name@university.edu"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
                 </div>
-              </div>
 
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label htmlFor="password" className="block text-sm font-semibold text-gray-700">
-                    Password
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/forgot-password')}
-                    className="text-blue-600 hover:text-blue-700 text-xs font-bold"
-                  >
-                    Forgot?
-                  </button>
-                </div>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <FiLock className="h-5 w-5 text-gray-400" />
+                <div className="field-group">
+                  <div className="field-row">
+                    <label className="field-label" style={{ marginBottom: 0 }}>Password</label>
+                    <Link to="/forgot-password" className="forgot-link">Forgot?</Link>
                   </div>
-                  <input
-                    id="password"
-                    name="password"
-                    type="password"
-                    autoComplete="current-password"
-                    required
-                    className="block w-full pl-10 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none text-gray-900 placeholder-gray-400"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
+                  <div className="field-wrap">
+                    <span className="fi">🔒</span>
+                    <input type={showPass ? 'text' : 'password'} className="ss-input ss-input-icon"
+                      placeholder="••••••••"
+                      value={password} onChange={e => setPassword(e.target.value)} required />
+                    <button type="button" className="eye-btn" onClick={() => setShowPass(!showPass)}>
+                      {showPass ? '🙈' : '👁'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="group w-full flex justify-center items-center py-4 px-6 border border-transparent text-lg font-bold rounded-xl text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-all transform hover:scale-[1.02] active:scale-[0.98]"
-            >
-              {loading ? (
-                <span className="flex items-center">
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Processing...
-                </span>
-              ) : (
-                <>
-                  Access Dashboard
-                  <FiArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-                </>
-              )}
-            </button>
-          </form>
+                <button type="submit" disabled={loading} className="ss-btn ss-btn-full" style={{ marginTop: 8 }}>
+                  {loading ? <Spinner /> : null}
+                  {loading ? 'Signing in…' : 'Access Dashboard →'}
+                </button>
+              </form>
 
-          <div className="mt-8 text-center space-y-4">
-            <p className="text-gray-600 text-sm">
-              Don't have an account?{' '}
-              <Link to="/register" className="text-blue-600 font-bold hover:underline">
-                Join 10,000+ students
+              <div className="divider"><span>New here?</span></div>
+
+              <Link to="/register" className="ss-btn ss-btn-ghost ss-btn-full" style={{ textDecoration: 'none', textAlign: 'center' }}>
+                Create a student account →
               </Link>
-            </p>
-            
-            <div className="pt-6 border-t border-gray-100 flex flex-col items-center space-y-3">
-              <div className="inline-flex items-center px-3 py-1 rounded-full bg-green-50 text-green-700 text-xs font-semibold">
-                <FiShield className="h-3 w-3 mr-1" />
-                🔒 Your data is encrypted and secure
-              </div>
-              <Link to="/owner/login" className="text-gray-500 hover:text-blue-600 text-sm font-medium transition-colors">
-                Are you a property owner? <span className="text-blue-600">Login here</span>
-              </Link>
+
+              <p className="footer-note">
+                Property owner? <Link to="/owner/login">Owner Portal</Link>
+              </p>
             </div>
-          </div>
+          </main>
         </div>
-      </div>
-    </div>
+      </OrbBackground>
+    </>
   );
 };
+
+const FEATURES = [
+  { title: 'Verified Reports Only', desc: 'Every report tied to a real resident.', color: '#6366f1' },
+  { title: 'Live Trust Scores',     desc: 'Safety scores updated in real-time.',   color: '#8b5cf6' },
+  { title: 'Owner Accountability',  desc: 'Owners must resolve issues publicly.',  color: '#10b981' },
+];
+
+const CSS = `
+  .login-page { min-height: 100vh; display: flex; align-items: stretch; }
+
+  .login-left {
+    display: none; width: 44%;
+    flex-direction: column; justify-content: space-between;
+    padding: 52px 56px; border-right: 1px solid var(--border);
+  }
+  @media(min-width: 1024px) { .login-left { display: flex; } }
+
+  .brand {
+    display: flex; align-items: center; gap: 10px; text-decoration: none;
+    color: var(--text-1); font-weight: 700; font-size: 16px; letter-spacing: -0.03em;
+  }
+  .brand-icon {
+    font-size: 22px;
+    background: linear-gradient(135deg, var(--indigo), var(--violet));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  .left-body { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+  .left-headline {
+    font-size: clamp(2.4rem, 3.5vw, 3.4rem); font-weight: 700; line-height: 1.05;
+    letter-spacing: -0.04em; color: var(--text-1); margin-bottom: 16px;
+  }
+  .left-headline em {
+    font-style: normal;
+    background: linear-gradient(120deg, var(--indigo), var(--violet));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .left-sub { color: var(--text-2); font-size: 15px; line-height: 1.65; margin-bottom: 40px; max-width: 340px; }
+
+  .feature-list { list-style: none; display: flex; flex-direction: column; gap: 14px; }
+  .feature-item {
+    display: flex; align-items: flex-start; gap: 14px;
+    padding: 14px 16px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: var(--r-md);
+    transition: border-color 0.25s, transform 0.2s;
+  }
+  .feature-item:hover { border-color: rgba(99,102,241,0.25); transform: translateX(3px); }
+  .feature-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+  .feature-item strong { display: block; font-size: 13px; font-weight: 600; color: var(--text-1); margin-bottom: 2px; }
+  .feature-item span { font-size: 12px; color: var(--text-2); }
+
+  .testimonial {
+    padding: 18px 20px; border-left: 2px solid var(--indigo);
+    background: var(--panel); border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  }
+  .testimonial p { font-size: 13px; color: var(--text-2); line-height: 1.65; font-style: italic; margin-bottom: 8px; }
+  .testimonial cite { font-size: 11px; font-weight: 600; color: var(--indigo); font-style: normal; }
+
+  .login-right { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 24px; }
+
+  .form-card { width: 100%; max-width: 400px; padding: 44px 40px; }
+  .form-eyebrow {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.14em; color: var(--indigo); margin-bottom: 10px;
+  }
+  .form-heading { font-size: 2rem; font-weight: 700; letter-spacing: -0.04em; color: var(--text-1); margin-bottom: 6px; }
+  .form-sub { font-size: 13px; color: var(--text-2); margin-bottom: 32px; line-height: 1.5; }
+
+  .field-group { margin-bottom: 18px; }
+  .field-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .field-wrap { position: relative; }
+
+  .fi { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 14px; pointer-events: none; opacity: 0.5; }
+  .eye-btn {
+    position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; cursor: none; font-size: 14px; opacity: 0.5; transition: opacity 0.2s;
+  }
+  .eye-btn:hover { opacity: 1; }
+
+  .forgot-link { font-size: 12px; font-weight: 600; color: var(--indigo); text-decoration: none; }
+  .forgot-link:hover { color: var(--violet); }
+
+  .divider { display: flex; align-items: center; gap: 12px; margin: 24px 0; }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .divider span { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-3); }
+
+  .footer-note { text-align: center; margin-top: 18px; font-size: 12px; color: var(--text-3); }
+  .footer-note a { color: var(--indigo); text-decoration: none; font-weight: 600; }
+  .footer-note a:hover { color: var(--violet); }
+`;

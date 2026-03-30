@@ -754,28 +754,27 @@ app.post('/api/auth/register-owner', async (req, res) => {
 
     await newUser.save();
 
-    const jwt = require('jsonwebtoken');
-    const payload = {
-      user: {
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email,
-        role: newUser.role
-      }
-    };
+    // Generate verification OTP for owner and send email
+    const otp = generateOTP();
+    const otpDoc = new OTP({
+      email: newUser.email.toLowerCase(),
+      otp,
+      type: 'verification',
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000)
+    });
+    await otpDoc.save();
 
-    const token = jwt.sign(payload, process.env.JWT_SECRET || 'default_secret', { expiresIn: '7d' });
+    const emailResult = await sendOTPEmail(newUser.email, otp, 'verification');
+    if (!emailResult.success) {
+      console.error('Owner verification email failed:', emailResult.error);
+      // continue anyway, user can request resend from verify-email
+    }
 
     res.status(201).json({
       success: true,
-      message: 'Owner registered successfully',
-      token,
-      user: {
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email,
-        role: newUser.role
-      }
+      message: 'Owner registered successfully. Please verify your email.',
+      requiresVerification: true,
+      email: newUser.email
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Error registering owner', error: error.message });
@@ -1566,6 +1565,13 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
+
+console.log('DB config:', {
+  MONGO_URI_defined: Boolean(process.env.MONGO_URI),
+  EMAIL_USER_defined: Boolean(process.env.EMAIL_USER),
+  EMAIL_PASS_defined: Boolean(process.env.EMAIL_PASS),
+  PORT: process.env.PORT
+});
 
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {

@@ -1,457 +1,366 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ImageUpload } from '../components/ImageUpload';
-import ReportCard from '../components/ReportCard';
-import { 
-  FiFileText, FiAlertTriangle, FiCheckCircle, FiClock, 
-  FiEdit2, FiTrash2, FiPlus, FiArrowLeft, FiFilter, FiSearch,
-  FiTool, FiCheck, FiX, FiAward
-} from 'react-icons/fi';
+import { SubtleOrb, PageLoader, SkeletonList, Spinner, useToast } from './DesignSystem';
 
-interface Image {
-  url: string;
-  publicId?: string;
-}
-
-interface Resolution {
-  description: string;
-  actionTaken: string;
-  images: Array<{ url: string; publicId: string }>;
-  resolvedBy?: { name: string } | string;
-  resolvedAt?: string;
-}
-
-interface Verification {
-  isVerified: boolean;
-  verifiedBy?: string;
-  verifiedAt?: string;
-  feedback?: string;
-  isDisputed: boolean;
-  disputeReason?: string;
-}
-
+interface Image { url: string; publicId?: string; }
+interface Resolution { description: string; actionTaken: string; images: Array<{ url: string; publicId: string }>; resolvedBy?: { name: string } | string; resolvedAt?: string; }
+interface Verification { isVerified: boolean; verifiedBy?: string; verifiedAt?: string; feedback?: string; isDisputed: boolean; disputeReason?: string; }
 interface Report {
-  _id: string;
-  accommodationName: string;
-  accommodationId?: string;
-  issueType: string;
-  description: string;
-  images?: Image[];
-  createdAt: string;
-  status?: string;
-  upvotes?: number;
-  upvotedBy?: string[];
-  user?: string;
-  resolution?: Resolution;
-  verification?: Verification;
+  _id: string; accommodationName: string; accommodationId?: string;
+  issueType: string; description: string; images?: Image[];
+  createdAt: string; status?: string; upvotes?: number; upvotedBy?: string[];
+  user?: string; resolution?: Resolution; verification?: Verification;
 }
+
+const ISSUE_TYPES = ['Food Safety', 'Water Quality', 'Hygiene', 'Security', 'Infrastructure'];
+
+const STATUS_CONFIG: Record<string, { color: string; bg: string; border: string; label: string }> = {
+  pending:  { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)',  border: 'rgba(245,158,11,0.3)',  label: 'Pending' },
+  approved: { color: '#6366f1', bg: 'rgba(99,102,241,0.1)',  border: 'rgba(99,102,241,0.3)',  label: 'Published' },
+  resolved: { color: '#8b5cf6', bg: 'rgba(139,92,246,0.1)',  border: 'rgba(139,92,246,0.3)',  label: 'Owner Responded' },
+  verified: { color: '#10b981', bg: 'rgba(16,185,129,0.1)',  border: 'rgba(16,185,129,0.3)',  label: 'Verified ✓' },
+  disputed: { color: '#f43f5e', bg: 'rgba(244,63,94,0.1)',   border: 'rgba(244,63,94,0.3)',   label: 'Disputed' },
+  rejected: { color: '#f43f5e', bg: 'rgba(244,63,94,0.1)',   border: 'rgba(244,63,94,0.3)',   label: 'Rejected' },
+};
 
 export default function MyReports() {
-  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-  const [reports, setReports] = useState<Report[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [activeFilter, setActiveFilter] = useState('all');
-  const [editingReport, setEditingReport] = useState<Report | null>(null);
-  const [editFormData, setEditFormData] = useState({
-    accommodationName: '',
-    issueType: '',
-    description: ''
-  });
-  const [editImages, setEditImages] = useState<{url: string; publicId: string}[]>([]);
-  const [editLoading, setEditLoading] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<string>('');
+  const API   = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  const toast = useToast();
+  const [reports, setReports]               = useState<Report[]>([]);
+  const [loading, setLoading]               = useState(true);
+  const [error, setError]                   = useState('');
+  const [activeFilter, setActiveFilter]     = useState('all');
+  const [editingReport, setEditingReport]   = useState<Report | null>(null);
+  const [editFormData, setEditFormData]     = useState({ accommodationName: '', issueType: '', description: '' });
+  const [editLoading, setEditLoading]       = useState(false);
+  const [deleteConfirm, setDeleteConfirm]   = useState<string | null>(null);
+  const [deletingId, setDeletingId]         = useState<string | null>(null);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    try {
-      const token = localStorage.getItem('token');
-      if (token) {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        setCurrentUserId(payload.user?.id || payload.id || payload.userId || '');
-      }
-    } catch {
-      setCurrentUserId('');
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchMyReports();
-  }, [API]);
+  useEffect(() => { fetchMyReports(); }, []);
 
   const fetchMyReports = async () => {
     const token = localStorage.getItem('token');
-    if (!token) {
-      setError('Please login to view your reports');
-      setLoading(false);
-      navigate('/login');
-      return;
-    }
-
+    if (!token) { navigate('/login'); return; }
     try {
-      const response = await fetch(`${API}/api/reports/my-reports`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      const data = await response.json();
-      if (data.success) {
-        setReports(data.data);
-      } else {
-        setError(data.message || 'Failed to fetch reports');
-      }
-    } catch (err) {
-      setError('Error connecting to server');
-    } finally {
-      setLoading(false);
-    }
+      const res  = await fetch(`${API}/api/reports/my-reports`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      if (data.success) setReports(data.data);
+      else setError(data.message || 'Failed to fetch reports');
+    } catch { setError('Error connecting to server'); }
+    finally { setLoading(false); }
   };
 
   const handleEdit = (report: Report) => {
     setEditingReport(report);
-    setEditFormData({
-      accommodationName: report.accommodationName,
-      issueType: report.issueType,
-      description: report.description
-    });
-    setEditImages((report.images || []).map(img => ({
-      url: img.url,
-      publicId: img.publicId || img.url
-    })));
-  };
-
-  const handleCancelEdit = () => {
-    setEditingReport(null);
-    setEditImages([]);
+    setEditFormData({ accommodationName: report.accommodationName, issueType: report.issueType, description: report.description });
   };
 
   const handleUpdateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingReport) return;
-    const token = localStorage.getItem('token');
-    setEditLoading(true);
-
+    const token = localStorage.getItem('token'); setEditLoading(true);
     try {
-      const response = await fetch(`${API}/api/reports/${editingReport._id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ...editFormData,
-          images: editImages
-        })
-      });
-      const data = await response.json();
+      const res  = await fetch(`${API}/api/reports/${editingReport._id}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(editFormData) });
+      const data = await res.json();
       if (data.success) {
         setEditingReport(null);
+        toast.success('Report updated successfully');
         fetchMyReports();
-      } else {
-        alert(data.message || 'Failed to update report');
-      }
-    } catch (err) {
-      alert('Error updating report');
-    } finally {
-      setEditLoading(false);
-    }
+      } else { toast.error(data.message || 'Failed to update report'); }
+    } catch { toast.error('Error updating report'); }
+    finally { setEditLoading(false); }
   };
 
   const handleDelete = async (reportId: string) => {
-    if (!window.confirm('Delete this report? This cannot be undone.')) return;
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('token'); setDeletingId(reportId);
     try {
-      const response = await fetch(`${API}/api/reports/${reportId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await response.json();
+      const res  = await fetch(`${API}/api/reports/${reportId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
       if (data.success) {
+        toast.success('Report deleted');
         fetchMyReports();
-      }
-    } catch (err) {
-      alert('Error deleting report');
-    }
+      } else { toast.error('Failed to delete report'); }
+    } catch { toast.error('Error deleting report'); }
+    finally { setDeletingId(null); setDeleteConfirm(null); }
   };
 
-  const handleVerify = async (id: string, accepted: boolean, feedbackOrReason: string) => {
+  const handleVerify = async (id: string, accepted: boolean, reason: string) => {
     const token = localStorage.getItem('token');
     try {
-      const response = await fetch(`${API}/api/reports/${id}/verify`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          accepted,
-          feedback: accepted ? feedbackOrReason : '',
-          disputeReason: !accepted ? feedbackOrReason : ''
-        })
-      });
-      const data = await response.json();
+      const res  = await fetch(`${API}/api/reports/${id}/verify`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ accepted, feedback: accepted ? reason : '', disputeReason: !accepted ? reason : '' }) });
+      const data = await res.json();
       if (data.success) {
+        toast.success(accepted ? 'Resolution verified!' : 'Resolution disputed');
         fetchMyReports();
       }
-    } catch (err) {
-      alert('Error verifying resolution');
-    }
+    } catch { toast.error('Error verifying resolution'); }
   };
 
-  const filteredReports = reports.filter(r => {
-    if (activeFilter === 'all') return true;
-    if (activeFilter === 'pending') return r.status === 'pending';
-    if (activeFilter === 'approved') return r.status === 'approved';
-    if (activeFilter === 'resolved') return r.status === 'resolved';
-    if (activeFilter === 'verified') return r.status === 'verified';
-    if (activeFilter === 'disputed') return r.status === 'disputed';
-    return true;
-  });
+  const filteredReports = reports.filter(r => activeFilter === 'all' || r.status === activeFilter);
 
-  const stats = [
-    { label: 'Total Contributions', value: reports.length, icon: <FiFileText />, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Pending Review', value: reports.filter(r => r.status === 'pending').length, icon: <FiClock />, color: 'text-yellow-600', bg: 'bg-yellow-50' },
-    { label: 'Owner Responded', value: reports.filter(r => r.status === 'resolved').length, icon: <FiTool />, color: 'text-purple-600', bg: 'bg-purple-50' },
-    { label: 'Issues Verified', value: reports.filter(r => r.status === 'verified').length, icon: <FiCheckCircle />, color: 'text-green-600', bg: 'bg-green-50' },
+  const STATS = [
+    { label: 'Total',   value: reports.length,                                     icon: '📄', color: 'var(--indigo)'  },
+    { label: 'Pending', value: reports.filter(r => r.status === 'pending').length,  icon: '⏳', color: 'var(--amber)'   },
+    { label: 'Active',  value: reports.filter(r => r.status === 'resolved').length, icon: '🔧', color: 'var(--violet)'  },
+    { label: 'Verified',value: reports.filter(r => r.status === 'verified').length, icon: '✅', color: 'var(--emerald)' },
   ];
 
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-    </div>
-  );
+  const FILTERS = [
+    { id: 'all',      label: 'All'       },
+    { id: 'pending',  label: '⏳ Pending' },
+    { id: 'approved', label: '✅ Live'   },
+    { id: 'resolved', label: '🔧 Responded' },
+    { id: 'verified', label: '🎉 Verified'  },
+    { id: 'disputed', label: '⚠️ Disputed'  },
+  ];
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
-      {/* Header */}
-      <div className="bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 pt-16 pb-24 relative overflow-hidden">
-        <div className="absolute inset-0 bg-blue-600/5 mix-blend-overlay"></div>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <Link to="/dashboard" className="inline-flex items-center text-blue-300 hover:text-white mb-10 font-bold transition-all gap-2">
-            <FiArrowLeft /> Back to Dashboard
-          </Link>
-          
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-8">
-            <div>
-              <h1 className="text-4xl lg:text-5xl font-black text-white tracking-tight mb-4">
-                Your Safety Reports
-              </h1>
-              <p className="text-xl text-blue-200 font-medium max-w-2xl">
-                Track the impact of your contributions and manage your verified safety reports.
-              </p>
-            </div>
-            <Link
-              to="/report"
-              className="bg-white text-slate-900 px-8 py-4 rounded-2xl font-black shadow-xl hover:bg-blue-50 transition-all flex items-center gap-2 whitespace-nowrap"
-            >
-              <FiPlus className="text-xl" /> Report New Issue
-            </Link>
-          </div>
-
-          {/* Header Stats Row */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-12">
-            {stats.map((stat, i) => (
-              <div key={i} className="bg-white/5 backdrop-blur-md border border-white/10 p-6 rounded-[2rem] flex items-center gap-4">
-                <div className={`w-12 h-12 ${stat.bg} ${stat.color} rounded-2xl flex items-center justify-center text-xl`}>
-                  {stat.icon}
-                </div>
-                <div>
-                  <p className="text-2xl font-black text-white">{stat.value}</p>
-                  <p className="text-[10px] font-black text-blue-200/60 uppercase tracking-widest leading-none">{stat.label}</p>
-                </div>
+    <>
+      <style>{CSS}</style>
+      <SubtleOrb>
+        <div className="mr-page">
+          <header className="mr-header fade-up">
+            <div className="mr-header-inner">
+              <div>
+                <Link to="/dashboard" className="mr-back-link">← Dashboard</Link>
+                <p className="mr-eyebrow">Your Contributions</p>
+                <h1 className="mr-title">My Safety Reports</h1>
               </div>
-            ))}
-          </div>
-        </div>
-      </div>
+              <Link to="/report" className="ss-btn ss-btn-rose" style={{ textDecoration: 'none', fontSize: 13 }}>+ New Report</Link>
+            </div>
+            <div className="mr-stats">
+              {STATS.map((s, i) => (
+                <div key={i} className="mr-stat fade-up" style={{ animationDelay: `${0.05 + i * 0.06}s` }}>
+                  <span className="mr-stat-icon">{s.icon}</span>
+                  <span className="mr-stat-num" style={{ color: s.color }}>{s.value}</span>
+                  <span className="mr-stat-label">{s.label}</span>
+                </div>
+              ))}
+            </div>
+          </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-10 relative z-20">
-        {/* Filters Card */}
-        <div className="bg-white rounded-3xl shadow-xl p-6 lg:p-8 mb-10 border border-gray-100">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-            <div className="flex gap-2 flex-wrap items-center">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest mr-2 flex items-center gap-2">
-                <FiFilter /> Filter By
-              </span>
-              {[
-                { id: 'all', label: 'All Reports' },
-                { id: 'pending', label: '⏳ Pending' },
-                { id: 'approved', label: '✅ Published' },
-                { id: 'resolved', label: '🔧 Resolved' },
-                { id: 'verified', label: '🎉 Verified' },
-                { id: 'disputed', label: '⚠️ Disputed' }
-              ].map(filter => (
-                <button
-                  key={filter.id}
-                  onClick={() => setActiveFilter(filter.id)}
-                  className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 ${
-                    activeFilter === filter.id 
-                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25' 
-                      : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
-                  }`}
-                >
-                  {filter.label}
+          <div className="mr-body">
+            {/* Filters */}
+            <div className="mr-filters glass fade-up fade-up-2">
+              {FILTERS.map(f => (
+                <button key={f.id} onClick={() => setActiveFilter(f.id)}
+                  className={`mr-filter-btn ${activeFilter === f.id ? 'mr-filter-active' : ''}`}>
+                  {f.label}
                 </button>
               ))}
             </div>
-            
-            <div className="relative w-full md:w-64">
-              <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input 
-                type="text" 
-                placeholder="Search your reports..."
-                className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none text-sm font-bold text-gray-700"
-              />
-            </div>
-          </div>
-        </div>
 
-        {/* Content Section */}
-        {filteredReports.length === 0 ? (
-          <div className="text-center py-24 bg-white rounded-[2.5rem] shadow-sm border border-gray-100 max-w-2xl mx-auto">
-            <div className="w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-8">
-              <FiFileText className="text-gray-300 text-4xl" />
-            </div>
-            <h3 className="text-2xl font-black text-slate-900 mb-2">You haven't filed any reports yet</h3>
-            <p className="text-slate-500 font-medium mb-10 max-w-sm mx-auto px-4">
-              Spotted a safety issue? Your voice matters! Your contributions can protect thousands of other students.
-            </p>
-            <Link 
-              to="/report" 
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-10 py-4 rounded-2xl font-black shadow-xl shadow-blue-500/25 hover:shadow-2xl transition-all inline-flex items-center gap-2"
-            >
-              Report an Issue <FiArrowRight />
-            </Link>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-10">
-            {filteredReports.map((report) => (
-              <ReportCard
-                key={report._id}
-                report={report}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-                onVerify={handleVerify}
-                currentUserId={currentUserId}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Impact Message */}
-        <div className="mt-16 p-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[2.5rem] shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-10 opacity-10">
-            <FiAward className="w-48 h-48 text-white" />
-          </div>
-          <div className="relative z-10 max-w-3xl">
-            <h3 className="text-3xl font-black text-white mb-4">Safety Champion Status</h3>
-            <p className="text-xl text-blue-100 font-medium mb-8">
-              Your verified reports have helped thousands of students make safer housing choices. Keep contributing to build a more transparent accommodation network.
-            </p>
-            <div className="flex items-center gap-6">
-              <div className="flex -space-x-3">
-                {[1, 2, 3, 4, 5].map(i => (
-                  <div key={i} className="w-12 h-12 rounded-full border-4 border-blue-600 bg-blue-100 flex items-center justify-center font-black text-blue-600 text-xs">
-                    {String.fromCharCode(64 + i)}
-                  </div>
-                ))}
+            {loading ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {Array.from({ length: 5 }).map((_, i) => <SkeletonList key={i} />)}
               </div>
-              <p className="text-sm font-bold text-blue-100">Joined by 10,000+ students nationwide</p>
-            </div>
+            ) : filteredReports.length === 0 ? (
+              <div className="mr-empty glass fade-up fade-up-3">
+                <span style={{ fontSize: 36, opacity: 0.2 }}>📄</span>
+                <h3 className="mr-empty-title">
+                  {activeFilter === 'all' ? "No reports yet" : `No ${activeFilter} reports`}
+                </h3>
+                <p className="mr-empty-sub">
+                  {activeFilter === 'all' ? 'Your reports help thousands of students stay safe.' : 'No reports match this filter.'}
+                </p>
+                {activeFilter === 'all' && (
+                  <Link to="/report" className="ss-btn" style={{ textDecoration: 'none', marginTop: 12 }}>Report an Issue →</Link>
+                )}
+              </div>
+            ) : (
+              <div className="mr-list fade-up fade-up-3">
+                {filteredReports.map((report, i) => {
+                  const sc = STATUS_CONFIG[report.status || 'pending'] || STATUS_CONFIG.pending;
+                  const hasResolution = !!report.resolution;
+                  const awaitingVerify = report.status === 'resolved' && !report.verification?.isVerified;
+
+                  return (
+                    <div key={report._id} className="mr-report-card glass" style={{ animationDelay: `${i * 0.04}s` }}>
+                      <div className="mr-report-header">
+                        <div>
+                          <span className="mr-issue-type">{report.issueType}</span>
+                          <h3 className="mr-place">{report.accommodationName}</h3>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span className="mr-status-badge" style={{ color: sc.color, background: sc.bg, borderColor: sc.border }}>{sc.label}</span>
+                          <div className="mr-actions">
+                            <button onClick={() => handleEdit(report)} className="mr-action-btn mr-action-edit" title="Edit">✎</button>
+                            <button onClick={() => setDeleteConfirm(report._id)} className="mr-action-btn mr-action-delete" title="Delete">🗑</button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="mr-desc">{report.description}</p>
+
+                      {report.images && report.images.length > 0 && (
+                        <div className="mr-images">
+                          {report.images.slice(0, 4).map((img, j) => (
+                            <img key={j} src={img.url} alt="" className="mr-img" />
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Owner resolution */}
+                      {hasResolution && (
+                        <div className="mr-resolution">
+                          <p className="mr-resolution-label">🔧 Owner responded</p>
+                          <p className="mr-resolution-text">{report.resolution?.responseText || report.resolution?.description}</p>
+                          {awaitingVerify && (
+                            <div className="mr-verify-row">
+                              <p style={{ fontSize: 12, color: 'var(--amber)', marginBottom: 8 }}>⚡ Was this resolved to your satisfaction?</p>
+                              <div style={{ display: 'flex', gap: 8 }}>
+                                <button onClick={() => handleVerify(report._id, true, 'Issue has been resolved')} className="ss-btn ss-btn-emerald" style={{ padding: '7px 14px', fontSize: 12 }}>
+                                  ✓ Yes, resolved
+                                </button>
+                                <button onClick={() => handleVerify(report._id, false, 'Issue not resolved')} className="ss-btn ss-btn-ghost" style={{ padding: '7px 14px', fontSize: 12, borderColor: 'rgba(244,63,94,0.3)', color: '#fda4af' }}>
+                                  ✕ Not resolved
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="mr-meta">
+                        <span>{new Date(report.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        {(report.upvotes ?? 0) > 0 && <span>▲ {report.upvotes} confirmations</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
-      </div>
 
-      {/* Edit Modal */}
-      {editingReport && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto relative">
-            <div className="p-8 lg:p-12">
-              <div className="flex justify-between items-center mb-10">
+        {/* Edit Modal */}
+        {editingReport && (
+          <div className="mr-modal-overlay" onClick={() => setEditingReport(null)}>
+            <div className="mr-modal glass-hi fade-up" onClick={e => e.stopPropagation()}>
+              <div className="mr-modal-header">
                 <div>
-                  <h2 className="text-3xl font-black text-slate-900 tracking-tight">Edit Your Report</h2>
-                  <p className="text-slate-500 font-bold mt-1 uppercase tracking-widest text-[10px]">Update safety information</p>
+                  <p style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--indigo)', marginBottom: 6 }}>Edit Report</p>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-1)' }}>{editingReport.accommodationName}</h3>
                 </div>
-                <button onClick={handleCancelEdit} className="p-3 bg-gray-50 hover:bg-gray-100 rounded-2xl transition-all">
-                  <FiX className="h-6 w-6 text-gray-400" />
-                </button>
+                <button onClick={() => setEditingReport(null)} className="mr-modal-close">✕</button>
               </div>
-              
-              <form onSubmit={handleUpdateSubmit} className="space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Accommodation Name</label>
-                    <input
-                      type="text"
-                      className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none font-bold text-slate-900"
-                      value={editFormData.accommodationName}
-                      onChange={(e) => setEditFormData({...editFormData, accommodationName: e.target.value})}
-                      required
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Issue Category</label>
-                    <select
-                      className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none font-bold text-slate-900 appearance-none"
-                      value={editFormData.issueType}
-                      onChange={(e) => setEditFormData({...editFormData, issueType: e.target.value})}
-                      required
-                    >
-                      <option value="Food Safety">Food Safety</option>
-                      <option value="Water Quality">Water Quality</option>
-                      <option value="Hygiene">Hygiene</option>
-                      <option value="Security">Security</option>
-                      <option value="Infrastructure">Infrastructure</option>
-                    </select>
-                  </div>
+              <form onSubmit={handleUpdateSubmit} style={{ marginTop: 20 }}>
+                <div className="field-group">
+                  <label className="field-label">Accommodation Name</label>
+                  <input className="ss-input" value={editFormData.accommodationName}
+                    onChange={e => setEditFormData(p => ({ ...p, accommodationName: e.target.value }))} required />
                 </div>
-                
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Description of Issue</label>
-                  <textarea
-                    className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none min-h-[160px] font-medium text-slate-700 leading-relaxed"
+                <div className="field-group">
+                  <label className="field-label">Issue Type</label>
+                  <select className="ss-input" value={editFormData.issueType}
+                    onChange={e => setEditFormData(p => ({ ...p, issueType: e.target.value }))} style={{ appearance: 'none' }} required>
+                    {ISSUE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Description</label>
+                  <textarea className="ss-input" style={{ resize: 'none', minHeight: 100 }}
                     value={editFormData.description}
-                    onChange={(e) => setEditFormData({...editFormData, description: e.target.value})}
-                    rows={5}
-                    required
-                  />
+                    onChange={e => setEditFormData(p => ({ ...p, description: e.target.value }))} required />
                 </div>
-
-                <div className="space-y-4">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1 flex items-center gap-2">
-                    <FiUpload /> Evidence Management
-                  </label>
-                  <div className="bg-gray-50 p-8 rounded-[2rem] border-2 border-dashed border-gray-200">
-                    <ImageUpload
-                      uploadedImages={editImages}
-                      onImagesChange={setEditImages}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-4 pt-6 border-t border-gray-50">
-                  <button 
-                    type="submit" 
-                    className="flex-grow py-5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black rounded-2xl hover:shadow-2xl hover:shadow-blue-500/25 transition-all disabled:opacity-50"
-                    disabled={editLoading}
-                  >
-                    {editLoading ? 'Processing Updates...' : 'Save & Publish Changes'}
-                  </button>
-                  <button 
-                    type="button" 
-                    onClick={handleCancelEdit} 
-                    className="px-10 py-5 bg-gray-100 text-slate-600 font-black rounded-2xl hover:bg-gray-200 transition-all"
-                  >
-                    Discard
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button type="button" onClick={() => setEditingReport(null)} className="ss-btn ss-btn-ghost" style={{ flex: 1, fontSize: 13 }}>Cancel</button>
+                  <button type="submit" disabled={editLoading} className="ss-btn" style={{ flex: 2, fontSize: 13 }}>
+                    {editLoading ? <Spinner size={14} /> : null}
+                    {editLoading ? 'Saving…' : 'Save Changes →'}
                   </button>
                 </div>
               </form>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+
+        {/* Delete Confirmation */}
+        {deleteConfirm && (
+          <div className="mr-modal-overlay" onClick={() => setDeleteConfirm(null)}>
+            <div className="mr-delete-modal glass-hi fade-up" onClick={e => e.stopPropagation()}>
+              <div style={{ fontSize: 28, marginBottom: 12 }}>🗑️</div>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-1)', marginBottom: 8 }}>Delete Report?</h3>
+              <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 24, lineHeight: 1.6 }}>
+                This action cannot be undone. The report will be permanently removed.
+              </p>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => setDeleteConfirm(null)} className="ss-btn ss-btn-ghost" style={{ flex: 1, fontSize: 13 }}>Cancel</button>
+                <button onClick={() => handleDelete(deleteConfirm)} disabled={!!deletingId} className="ss-btn ss-btn-rose" style={{ flex: 1, fontSize: 13 }}>
+                  {deletingId ? <Spinner size={14} /> : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </SubtleOrb>
+    </>
   );
 }
+
+const CSS = `
+  .mr-page { min-height: 100vh; background: transparent; padding-top: 60px; }
+
+  .mr-header { background: rgba(5,5,10,0.8); border-bottom: 1px solid var(--border); padding: 36px 0 0; margin-bottom: 36px; backdrop-filter: blur(12px); }
+  .mr-header-inner { max-width: 1000px; margin: 0 auto; padding: 0 32px 28px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; }
+  .mr-back-link { font-size: 12px; color: var(--text-3); text-decoration: none; display: block; margin-bottom: 14px; transition: color 0.2s; }
+  .mr-back-link:hover { color: var(--text-1); }
+  .mr-eyebrow { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: var(--indigo); margin-bottom: 8px; }
+  .mr-title { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.04em; color: var(--text-1); }
+
+  .mr-stats { max-width: 1000px; margin: 0 auto; padding: 0 32px 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border-top: 1px solid var(--border); }
+  .mr-stat { padding: 16px 24px; background: rgba(5,5,10,0.8); display: flex; flex-direction: column; gap: 3px; }
+  .mr-stat-icon { font-size: 16px; margin-bottom: 4px; }
+  .mr-stat-num { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.04em; }
+  .mr-stat-label { font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); }
+
+  .mr-body { max-width: 1000px; margin: 0 auto; padding: 0 32px 60px; }
+
+  .mr-filters {
+    display: flex; flex-wrap: wrap; gap: 6px; padding: 14px 16px;
+    border-radius: var(--r-md); margin-bottom: 20px;
+  }
+  .mr-filter-btn {
+    padding: 6px 14px; border: 1px solid var(--border); background: transparent; border-radius: var(--r-sm);
+    font-family: var(--font-body); font-size: 12px; font-weight: 600; color: var(--text-3); cursor: none; transition: all 0.2s;
+  }
+  .mr-filter-btn:hover { color: var(--text-1); border-color: var(--border-hi); }
+  .mr-filter-active { background: rgba(99,102,241,0.15); border-color: rgba(99,102,241,0.35); color: #a5b4fc; }
+
+  .mr-list { display: flex; flex-direction: column; gap: 12px; }
+
+  .mr-report-card { padding: 20px 24px; }
+  .mr-report-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; gap: 12px; flex-wrap: wrap; }
+  .mr-issue-type { display: block; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--indigo); margin-bottom: 4px; }
+  .mr-place { font-size: 15px; font-weight: 700; letter-spacing: -0.02em; color: var(--text-1); }
+  .mr-status-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 3px 9px; border-radius: 100px; border: 1px solid; white-space: nowrap; }
+  .mr-actions { display: flex; gap: 6px; }
+  .mr-action-btn { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border); background: transparent; cursor: none; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+  .mr-action-edit:hover  { border-color: rgba(99,102,241,0.4); color: #a5b4fc; background: rgba(99,102,241,0.08); }
+  .mr-action-delete:hover{ border-color: rgba(244,63,94,0.4);  color: #fda4af; background: rgba(244,63,94,0.08); }
+
+  .mr-desc { font-size: 13px; color: var(--text-2); line-height: 1.6; margin-bottom: 12px; }
+  .mr-images { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .mr-img { width: 72px; height: 72px; object-fit: cover; border-radius: var(--r-sm); border: 1px solid var(--border); }
+
+  .mr-resolution { padding: 12px 16px; background: rgba(139,92,246,0.06); border: 1px solid rgba(139,92,246,0.2); border-radius: var(--r-sm); margin-bottom: 12px; }
+  .mr-resolution-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--violet); margin-bottom: 6px; }
+  .mr-resolution-text { font-size: 12px; color: var(--text-2); line-height: 1.6; margin-bottom: 8px; }
+  .mr-verify-row { border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; margin-top: 8px; }
+
+  .mr-meta { display: flex; gap: 14px; font-size: 11px; color: var(--text-3); }
+
+  .mr-empty { padding: 64px 24px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .mr-empty-title { font-size: 1rem; font-weight: 700; color: var(--text-1); }
+  .mr-empty-sub { font-size: 13px; color: var(--text-3); max-width: 320px; text-align: center; }
+
+  /* Modals */
+  .mr-modal-overlay { position: fixed; inset: 0; z-index: 9000; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .mr-modal { width: 100%; max-width: 480px; padding: 28px; border-radius: var(--r-xl); }
+  .mr-modal-header { display: flex; justify-content: space-between; align-items: flex-start; }
+  .mr-modal-close { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border); background: transparent; cursor: none; color: var(--text-3); font-size: 13px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+  .mr-modal-close:hover { border-color: rgba(244,63,94,0.4); color: #fda4af; }
+  .mr-delete-modal { width: 100%; max-width: 380px; padding: 32px; border-radius: var(--r-xl); text-align: center; }
+  .field-group { margin-bottom: 14px; }
+`;

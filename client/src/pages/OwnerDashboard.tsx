@@ -1,681 +1,342 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { 
-  FiHome, FiMessageSquare, FiTrendingUp, FiAlertCircle, FiCheckCircle, 
-  FiArrowRight, FiPlus, FiClock, FiStar, FiShield, FiX, FiUpload,
-  FiImage, FiSend, FiCheck
-} from 'react-icons/fi';
+import { SubtleOrb, PageLoader, Spinner, SkeletonCard, useToast } from './DesignSystem';
 
-interface Property {
-  _id: string;
-  name: string;
-  address: string;
-  city: string;
-  safetyScore: number;
-  totalReports: number;
-  trustScore?: number;
-}
-
-interface Feedback {
-  _id: string;
-  category: string;
-  description: string;
-  status: string;
-  createdAt: string;
-  images?: string[];
-  accommodationId: {
-    _id: string;
-    name: string;
-  };
-}
+interface Property { _id: string; name: string; address: string; city: string; safetyScore: number; totalReports: number; trustScore?: number; }
+interface Feedback  { _id: string; category: string; description: string; status: string; createdAt: string; images?: string[]; accommodationId: { _id: string; name: string }; }
 
 export default function OwnerDashboard() {
   const { user, loading: authLoading } = useAuth();
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  
-  // Response Modal State
-  const [showResponseModal, setShowResponseModal] = useState(false);
-  const [selectedFeedback, setSelectedFeedback] = useState<Feedback | null>(null);
-  const [responseText, setResponseText] = useState('');
+  const [properties, setProperties]   = useState<Property[]>([]);
+  const [feedbacks, setFeedbacks]      = useState<Feedback[]>([]);
+  const [loading, setLoading]          = useState(true);
+  const toast    = useToast();
+
+  const [showModal, setShowModal]         = useState(false);
+  const [selFeedback, setSelFeedback]     = useState<Feedback | null>(null);
+  const [responseText, setResponseText]   = useState('');
   const [responseImages, setResponseImages] = useState<File[]>([]);
-  const [responseImagePreviews, setResponseImagePreviews] = useState<string[]>([]);
-  const [submittingResponse, setSubmittingResponse] = useState(false);
-  const [responseSuccess, setResponseSuccess] = useState(false);
-  
+  const [previews, setPreviews]           = useState<string[]>([]);
+  const [submitting, setSubmitting]       = useState(false);
+  const [resSuccess, setResSuccess]       = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [activeTab, setActiveTab]         = useState<'properties' | 'feedbacks'>('feedbacks');
+
   const navigate = useNavigate();
   const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
   useEffect(() => {
     if (authLoading) return;
-    
-    if (!user) {
-      navigate('/owner/login');
-      return;
-    }
-    
-    if (user.role !== 'owner') {
-      if (user.role === 'admin') {
-        navigate('/admin');
-      } else {
-        navigate('/dashboard');
-      }
-      return;
-    }
-    
-    fetchDashboardData();
-  }, [user, authLoading, navigate]);
+    if (!user) { navigate('/owner/login'); return; }
+    if (user.role !== 'owner') { navigate(user.role === 'admin' ? '/admin' : '/dashboard'); return; }
+    fetchAll();
+  }, [user, authLoading]);
 
-  const fetchDashboardData = async () => {
+  const fetchAll = async () => {
     const token = localStorage.getItem('token');
-    
-    if (!token) {
-      navigate('/owner/login');
-      return;
-    }
-    
+    if (!token) { navigate('/owner/login'); return; }
     setLoading(true);
-    setError('');
-    
     try {
-      const [propsRes, feedbackRes] = await Promise.all([
-        fetch(`${API}/api/owner/accommodations`, { 
-          headers: { 'Authorization': `Bearer ${token}` } 
-        }),
-        fetch(`${API}/api/owner/reports`, { 
-          headers: { 'Authorization': `Bearer ${token}` } 
-        })
+      const [pr, fr] = await Promise.all([
+        fetch(`${API}/api/owner/properties`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API}/api/owner/feedbacks`,  { headers: { Authorization: `Bearer ${token}` } }),
       ]);
-      
-      const propsData = await propsRes.json();
-      const feedbackData = await feedbackRes.json();
-      
-      if (propsData.success) {
-        setProperties(propsData.data || []);
-      }
-      if (feedbackData.success) {
-        setFeedbacks(feedbackData.data || []);
-      }
-    } catch (err) {
-      console.error('Error fetching dashboard data:', err);
-      setError('Failed to load dashboard data');
-    } finally {
-      setLoading(false);
-    }
+      const pd = await pr.json(); const fd = await fr.json();
+      if (pd.success) setProperties(pd.data || []);
+      if (fd.success) setFeedbacks(fd.data || []);
+    } catch { toast.error('Failed to load dashboard data'); } finally { setLoading(false); }
   };
 
-  // Open response modal
-  const openResponseModal = (feedback: Feedback) => {
-    setSelectedFeedback(feedback);
-    setResponseText('');
-    setResponseImages([]);
-    setResponseImagePreviews([]);
-    setResponseSuccess(false);
-    setShowResponseModal(true);
+  const openModal = (fb: Feedback) => {
+    setSelFeedback(fb); setResponseText(''); setResponseImages([]); setPreviews([]); setResSuccess(false); setShowModal(true);
   };
 
-  // Close response modal
-  const closeResponseModal = () => {
-    setShowResponseModal(false);
-    setSelectedFeedback(null);
-    setResponseText('');
-    setResponseImages([]);
-    setResponseImagePreviews([]);
-    setResponseSuccess(false);
-  };
-
-  // Handle image selection
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImages = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    if (files.length + responseImages.length > 5) {
-      alert('Maximum 5 images allowed');
-      return;
-    }
-
-    const validFiles = files.filter(file => {
-      if (!file.type.startsWith('image/')) {
-        alert(`${file.name} is not an image`);
-        return false;
-      }
-      if (file.size > 5 * 1024 * 1024) {
-        alert(`${file.name} is too large (max 5MB)`);
-        return false;
-      }
-      return true;
-    });
-
-    setResponseImages(prev => [...prev, ...validFiles]);
-
-    // Create previews
-    validFiles.forEach(file => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setResponseImagePreviews(prev => [...prev, reader.result as string]);
-      };
-      reader.readAsDataURL(file);
-    });
+    setResponseImages(prev => [...prev, ...files].slice(0, 5));
+    files.forEach(f => { const r = new FileReader(); r.onload = ev => setPreviews(p => [...p, ev.target!.result as string]); r.readAsDataURL(f); });
   };
 
-  // Remove image
-  const removeImage = (index: number) => {
-    setResponseImages(prev => prev.filter((_, i) => i !== index));
-    setResponseImagePreviews(prev => prev.filter((_, i) => i !== index));
-  };
-
-  // Submit response
   const submitResponse = async () => {
-    if (!selectedFeedback || !responseText.trim()) {
-      alert('Please enter a response');
-      return;
-    }
-
-    setSubmittingResponse(true);
-
+    if (!selFeedback || !responseText.trim()) return;
+    setSubmitting(true);
+    const token = localStorage.getItem('token');
     try {
-      const token = localStorage.getItem('token');
-      let imageUrls: string[] = [];
-
-      // Upload images first if any
-      if (responseImages.length > 0) {
-        const formData = new FormData();
-        responseImages.forEach(file => {
-          formData.append('images', file);
-        });
-
-        const uploadRes = await fetch(`${API}/api/upload`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          },
-          body: formData
-        });
-
-        const uploadData = await uploadRes.json();
-        if (uploadData.success && uploadData.urls) {
-          imageUrls = uploadData.urls;
-        }
-      }
-
-      // Submit resolution
-      const response = await fetch(`${API}/api/owner/reports/${selectedFeedback._id}/resolve`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          resolutionDescription: responseText.trim(),
-          resolutionImages: imageUrls,
-          actionTaken: responseText.trim()
-        })
+      const fd = new FormData();
+      fd.append('responseText', responseText); fd.append('actionTaken', 'Owner responded');
+      responseImages.forEach(img => fd.append('images', img));
+      const res = await fetch(`${API}/api/owner/feedbacks/${selFeedback._id}/respond`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd,
       });
-
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        setResponseSuccess(true);
-        // Refresh data after 2 seconds
-        setTimeout(() => {
-          closeResponseModal();
-          fetchDashboardData();
-        }, 2000);
+      if (res.ok) {
+        setResSuccess(true);
+        setFeedbacks(fbs => fbs.map(f => f._id === selFeedback._id ? { ...f, status: 'resolved' } : f));
+        toast.success('Response submitted successfully!');
+        setTimeout(() => setShowModal(false), 1800);
       } else {
-        alert(data.message || 'Failed to submit response');
+        toast.error('Failed to submit response');
       }
-    } catch (err) {
-      console.error('Submit response error:', err);
-      alert('Error submitting response. Please try again.');
-    } finally {
-      setSubmittingResponse(false);
-    }
+    } catch { toast.error('Connection error'); } finally { setSubmitting(false); }
   };
 
-  // Loading states
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mb-4"></div>
-          <p className="text-gray-600 font-medium">Verifying access...</p>
-        </div>
-      </div>
-    );
-  }
+  if (authLoading || loading) return <PageLoader />;
 
-  if (!user || user.role !== 'owner') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mb-4"></div>
-          <p className="text-gray-600 font-medium">Redirecting...</p>
-        </div>
-      </div>
-    );
-  }
+  const pendingCount  = feedbacks.filter(f => f.status === 'pending' || f.status === 'approved').length;
+  const resolvedCount = feedbacks.filter(f => f.status === 'resolved').length;
+  const avgScore      = properties.length ? Math.round(properties.reduce((a, p) => a + (p.trustScore ?? p.safetyScore ?? 0), 0) / properties.length) : 0;
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading your properties...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl text-center">
-          <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-            <FiAlertCircle className="h-8 w-8 text-red-600" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">{error}</h2>
-          <p className="text-gray-600 mb-6">Please check your connection and try again.</p>
-          <button 
-            onClick={fetchDashboardData}
-            className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-colors"
-          >
-            Try Again
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const pendingReports = feedbacks.filter(f => f.status === 'pending' || f.status === 'approved' || f.status === 'disputed').length;
-  const avgScore = properties.length > 0 
-    ? Math.round(properties.reduce((acc, p) => acc + (p.trustScore || p.safetyScore || 0), 0) / properties.length)
-    : 0;
+  const statusColor = (s: string) =>
+    s === 'resolved' ? { color: '#10b981', bg: 'rgba(16,185,129,0.1)', border: 'rgba(16,185,129,0.3)' } :
+    s === 'pending'  ? { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.3)' } :
+                       { color: '#6366f1', bg: 'rgba(99,102,241,0.1)',  border: 'rgba(99,102,241,0.3)'  };
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-20">
-      {/* Header */}
-      <div className="bg-slate-900 text-white pt-10 pb-32">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-            <div>
-              <h1 className="text-3xl font-black tracking-tight mb-2">Property Management Dashboard</h1>
-              <p className="text-emerald-400 font-bold flex items-center gap-2">
-                <FiShield /> Welcome back, {user.name?.split(' ')[0] || 'Owner'}!
-              </p>
-            </div>
-            <Link 
-              to="/owner/add-property" 
-              className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-emerald-900/20 transition-all flex items-center gap-2"
-            >
-              <FiPlus /> Add New Property
-            </Link>
-          </div>
-
-          {/* Top Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12">
-            <div className="bg-white/5 backdrop-blur-md border border-white/10 p-6 rounded-3xl">
-              <div className="flex justify-between items-start mb-4">
-                <div className="p-3 bg-emerald-500/20 rounded-2xl text-emerald-400">
-                  <FiHome className="h-6 w-6" />
-                </div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Inventory</span>
-              </div>
-              <p className="text-3xl font-black text-white">{properties.length}</p>
-              <p className="text-sm text-slate-400 font-bold mt-1">Total Properties Registered</p>
-            </div>
-            
-            <div className={`backdrop-blur-md border p-6 rounded-3xl transition-all ${pendingReports > 0 ? 'bg-red-500/10 border-red-500/20' : 'bg-white/5 border-white/10'}`}>
-              <div className="flex justify-between items-start mb-4">
-                <div className={`p-3 rounded-2xl ${pendingReports > 0 ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                  <FiAlertCircle className="h-6 w-6" />
-                </div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Attention</span>
-              </div>
-              <p className="text-3xl font-black text-white">{pendingReports}</p>
-              <p className={`text-sm font-bold mt-1 ${pendingReports > 0 ? 'text-red-400' : 'text-slate-400'}`}>
-                {pendingReports > 0 ? `🔔 ${pendingReports} reports need your attention` : 'All reports resolved'}
-              </p>
-            </div>
-
-            <div className="bg-white/5 backdrop-blur-md border border-white/10 p-6 rounded-3xl">
-              <div className="flex justify-between items-start mb-4">
-                <div className="p-3 bg-yellow-500/20 rounded-2xl text-yellow-400">
-                  <FiStar className="h-6 w-6" />
-                </div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Performance</span>
-              </div>
-              <p className="text-3xl font-black text-white">{avgScore || 'N/A'}</p>
-              <p className="text-sm text-slate-400 font-bold mt-1">Your overall trust score</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-16">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Main Content: Properties */}
-          <div className="lg:col-span-2 space-y-8">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-black text-slate-900">Your Properties</h2>
-              <Link to="/owner/add-property" className="text-sm font-bold text-emerald-600 hover:text-emerald-700">
-                + Add New
-              </Link>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {properties.length > 0 ? properties.map(property => (
-                <div key={property._id} className="bg-white p-6 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 group hover:scale-[1.02] transition-all duration-300">
-                  <div className="flex justify-between items-start mb-6">
-                    <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl">
-                      <FiHome />
-                    </div>
-                    <div className={`px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest ${
-                      (property.trustScore || property.safetyScore || 0) >= 80 ? 'bg-green-50 text-green-600' :
-                      (property.trustScore || property.safetyScore || 0) >= 50 ? 'bg-yellow-50 text-yellow-600' : 'bg-red-50 text-red-600'
-                    }`}>
-                      Score: {property.trustScore || property.safetyScore || 0}
-                    </div>
-                  </div>
-                  <h3 className="text-lg font-black text-slate-900 mb-1">{property.name}</h3>
-                  <p className="text-sm text-slate-400 font-bold mb-6 flex items-center gap-1">
-                    <FiClock className="inline" /> {property.city}
-                  </p>
-                  
-                  <div className="flex items-center justify-between pt-6 border-t border-slate-50">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">{property.totalReports || 0} Reports</span>
-                    <Link to={`/accommodations/${property._id}`} className="p-2 bg-slate-50 text-slate-400 rounded-xl group-hover:bg-emerald-600 group-hover:text-white transition-all">
-                      <FiArrowRight />
-                    </Link>
-                  </div>
-                </div>
-              )) : (
-                <div className="col-span-2 bg-white p-12 rounded-3xl border-2 border-dashed border-slate-200 text-center">
-                  <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <FiPlus className="text-slate-300 text-3xl" />
-                  </div>
-                  <h3 className="text-xl font-black text-slate-900 mb-2">No properties yet</h3>
-                  <p className="text-slate-500 font-bold mb-8">Register your first property to start building trust with students.</p>
-                  <Link to="/owner/add-property" className="inline-flex items-center gap-2 bg-slate-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-slate-800 transition-all">
-                    Register Property <FiArrowRight />
-                  </Link>
-                </div>
-              )}
-            </div>
-
-            {/* Tip section */}
-            <div className="bg-emerald-900 text-white p-8 rounded-3xl relative overflow-hidden">
-              <div className="relative z-10 max-w-md">
-                <h3 className="text-xl font-black mb-2">Improve Your Trust Rating</h3>
-                <p className="text-emerald-100 font-medium mb-6">Quick tip: Responding to student feedback within 48 hours increases your trust score by up to 15%.</p>
-                <button className="bg-white text-emerald-900 px-6 py-2 rounded-xl font-bold text-sm">Learn More</button>
-              </div>
-              <FiTrendingUp className="absolute -bottom-4 -right-4 w-48 h-48 text-emerald-800/50 -rotate-12" />
-            </div>
-          </div>
-
-          {/* Sidebar: Student Feedback */}
-          <div className="space-y-8">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-black text-slate-900">Student Feedback</h2>
-              <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest">
-                {feedbacks.filter(f => f.status !== 'resolved' && f.status !== 'verified').length} Pending
-              </span>
-            </div>
-
-            <div className="space-y-4">
-              {feedbacks.length > 0 ? feedbacks.slice(0, 5).map(feedback => (
-                <div key={feedback._id} className="bg-white p-6 rounded-3xl shadow-lg shadow-slate-200/50 border border-slate-100">
-                  <div className="flex justify-between items-start mb-4">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">
-                      {feedback.category}
-                    </span>
-                    <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${
-                      feedback.status === 'pending' ? 'bg-yellow-50 text-yellow-600' :
-                      feedback.status === 'approved' ? 'bg-blue-50 text-blue-600' :
-                      feedback.status === 'resolved' ? 'bg-green-50 text-green-600' :
-                      feedback.status === 'verified' ? 'bg-emerald-50 text-emerald-600' :
-                      feedback.status === 'disputed' ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-600'
-                    }`}>
-                      {feedback.status}
-                    </span>
-                  </div>
-                  <p className="text-sm font-bold text-slate-900 mb-2 line-clamp-2">{feedback.description}</p>
-                  <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-4">
-                    {feedback.accommodationId?.name || 'Unknown'} • {new Date(feedback.createdAt).toLocaleDateString()}
-                  </p>
-                  
-                  {/* Show respond button only for actionable statuses */}
-                  {(feedback.status === 'pending' || feedback.status === 'approved' || feedback.status === 'disputed') && (
-                    <button 
-                      onClick={() => openResponseModal(feedback)}
-                      className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2"
-                    >
-                      <FiMessageSquare /> Respond Now
-                    </button>
-                  )}
-                  
-                  {feedback.status === 'resolved' && (
-                    <div className="w-full py-2 bg-blue-50 text-blue-600 rounded-xl font-bold text-xs text-center">
-                      ⏳ Awaiting Student Verification
-                    </div>
-                  )}
-                  
-                  {feedback.status === 'verified' && (
-                    <div className="w-full py-2 bg-green-50 text-green-600 rounded-xl font-bold text-xs text-center flex items-center justify-center gap-2">
-                      <FiCheckCircle /> Issue Resolved
-                    </div>
-                  )}
-                </div>
-              )) : (
-                <div className="bg-white p-8 rounded-3xl border border-slate-100 text-center">
-                  <FiCheckCircle className="h-12 w-12 text-emerald-500 mx-auto mb-4 opacity-20" />
-                  <p className="text-slate-500 font-bold">No recent feedback</p>
-                  <p className="text-slate-400 text-sm mt-1">Your properties have no reports yet</p>
-                </div>
-              )}
-            </div>
-
-            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-xl shadow-slate-200/50">
-              <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2">
-                <FiTrendingUp className="text-emerald-600" /> Platform Insights
-              </h3>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-slate-500 font-bold">Total Properties</span>
-                  <span className="text-slate-900 font-black">{properties.length}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-slate-500 font-bold">Total Reports</span>
-                  <span className="text-slate-900 font-black">{feedbacks.length}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-slate-500 font-bold">Pending Response</span>
-                  <span className={`font-black ${pendingReports > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                    {pendingReports}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-slate-500 font-bold">Avg Trust Score</span>
-                  <span className={`font-black ${
-                    avgScore >= 80 ? 'text-green-600' : 
-                    avgScore >= 50 ? 'text-yellow-600' : 'text-red-600'
-                  }`}>
-                    {avgScore || 'N/A'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Response Modal */}
-      {showResponseModal && selectedFeedback && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white rounded-t-3xl">
+    <>
+      <style>{CSS}</style>
+      <SubtleOrb>
+        <div className="od-page">
+          <header className="od-header fade-up">
+            <div className="od-header-inner">
               <div>
-                <h3 className="text-xl font-black text-slate-900">Respond to Report</h3>
-                <p className="text-sm text-slate-500">Explain the action you've taken to resolve this issue</p>
+                <p className="od-eyebrow">Owner Dashboard</p>
+                <h1 className="od-title">Hello, {user?.name?.split(' ')[0] || 'Owner'} 👋</h1>
+                <p className="od-sub">Manage your properties and build tenant trust.</p>
               </div>
-              <button 
-                onClick={closeResponseModal}
-                className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
-              >
-                <FiX className="h-6 w-6 text-slate-400" />
+              <div className="od-header-actions">
+                <Link to="/owner/add-property" className="ss-btn ss-btn-emerald" style={{ textDecoration: 'none', fontSize: 13 }}>+ Add Property</Link>
+                <Link to="/accommodations" className="ss-btn ss-btn-ghost" style={{ textDecoration: 'none', fontSize: 13 }}>Browse →</Link>
+              </div>
+            </div>
+
+            {/* Stats */}
+            <div className="od-stats">
+              {[
+                { label: 'Properties',      value: properties.length, icon: '🏠', color: 'var(--emerald)' },
+                { label: 'Avg Trust Score', value: `${avgScore}%`,    icon: '⭐', color: 'var(--indigo)'  },
+                { label: 'Pending Reports', value: pendingCount,      icon: '⚠️', color: 'var(--amber)'   },
+                { label: 'Resolved',        value: resolvedCount,     icon: '✅', color: 'var(--emerald)' },
+              ].map((s, i) => (
+                <div key={i} className="od-stat fade-up" style={{ animationDelay: `${0.05 + i * 0.06}s` }}>
+                  <div className="od-stat-icon">{s.icon}</div>
+                  <div className="od-stat-num" style={{ color: s.color }}>{s.value}</div>
+                  <div className="od-stat-label">{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </header>
+
+          <div className="od-body">
+            <div className="od-tabs fade-up fade-up-3">
+              <button onClick={() => setActiveTab('feedbacks')} className={`od-tab ${activeTab === 'feedbacks' ? 'od-tab-active' : ''}`}>
+                ⚠️ Reports {pendingCount > 0 && <span className="od-badge">{pendingCount}</span>}
+              </button>
+              <button onClick={() => setActiveTab('properties')} className={`od-tab ${activeTab === 'properties' ? 'od-tab-active' : ''}`}>
+                🏠 My Properties
               </button>
             </div>
 
-            {/* Success State */}
-            {responseSuccess ? (
-              <div className="p-12 text-center">
-                <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <FiCheck className="h-10 w-10 text-emerald-600" />
-                </div>
-                <h4 className="text-2xl font-black text-slate-900 mb-2">Response Submitted!</h4>
-                <p className="text-slate-500">The student will be notified to verify the resolution.</p>
-              </div>
-            ) : (
-              <div className="p-6 space-y-6">
-                {/* Report Info */}
-                <div className="bg-slate-50 rounded-2xl p-4">
-                  <div className="flex items-start gap-3">
-                    <div className={`p-2 rounded-xl ${
-                      selectedFeedback.status === 'disputed' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-600'
-                    }`}>
-                      <FiAlertCircle className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
-                          {selectedFeedback.category}
-                        </span>
-                        <span className={`text-xs font-black uppercase tracking-widest px-2 py-0.5 rounded ${
-                          selectedFeedback.status === 'disputed' ? 'bg-red-50 text-red-600' : 'bg-yellow-50 text-yellow-600'
-                        }`}>
-                          {selectedFeedback.status}
-                        </span>
-                      </div>
-                      <p className="text-sm font-semibold text-slate-700">{selectedFeedback.description}</p>
-                      <p className="text-xs text-slate-400 mt-2">
-                        {selectedFeedback.accommodationId?.name} • Reported on {new Date(selectedFeedback.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
+            {activeTab === 'feedbacks' && (
+              <div className="od-feedbacks fade-up fade-up-4">
+                {feedbacks.length === 0 ? (
+                  <div className="od-empty glass">
+                    <span style={{ fontSize: 28, opacity: 0.3 }}>✅</span>
+                    <p>No reports on your properties. Keep up the great work!</p>
                   </div>
-                  
-                  {/* Show report images if any */}
-                  {selectedFeedback.images && selectedFeedback.images.length > 0 && (
-                    <div className="mt-4">
-                      <p className="text-xs font-bold text-slate-500 mb-2">Reported Evidence:</p>
-                      <div className="flex gap-2 flex-wrap">
-                        {selectedFeedback.images.map((img, i) => (
-                          <img 
-                            key={i} 
-                            src={img} 
-                            alt="Report evidence" 
-                            className="w-20 h-20 object-cover rounded-xl border border-slate-200"
-                          />
-                        ))}
+                ) : feedbacks.map((f, i) => {
+                  const sc = statusColor(f.status);
+                  return (
+                    <div key={f._id} className="feedback-card glass fade-up" style={{ animationDelay: `${i * 0.04}s` }}>
+                      <div className="feedback-header">
+                        <div>
+                          <span className="feedback-property">{f.accommodationId?.name || '—'}</span>
+                          <span className="feedback-category">{f.category}</span>
+                        </div>
+                        <span className="feedback-status" style={{ color: sc.color, background: sc.bg, borderColor: sc.border }}>
+                          {f.status}
+                        </span>
+                      </div>
+                      <p className="feedback-desc">{f.description}</p>
+                      <div className="feedback-footer">
+                        <span className="feedback-date">{new Date(f.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        {(f.status === 'pending' || f.status === 'approved') && (
+                          <button className="ss-btn ss-btn-emerald" style={{ padding: '8px 16px', fontSize: 12 }}
+                            onClick={() => openModal(f)}>
+                            Respond
+                          </button>
+                        )}
                       </div>
                     </div>
-                  )}
-                </div>
+                  );
+                })}
+              </div>
+            )}
 
-                {/* Response Text */}
-                <div>
-                  <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-2">
-                    Your Response / Action Taken <span className="text-red-500">*</span>
-                  </label>
-                  <textarea
-                    value={responseText}
-                    onChange={(e) => setResponseText(e.target.value)}
-                    rows={4}
-                    className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-xl focus:bg-white focus:border-emerald-500 outline-none transition-all font-semibold resize-none"
-                    placeholder="Describe what action you've taken to resolve this issue. Be specific - this will be shown to the student and helps build trust."
-                  />
-                </div>
-
-                {/* Proof Images */}
-                <div>
-                  <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-2">
-                    Proof Images (Optional - Recommended)
-                  </label>
-                  <p className="text-xs text-slate-500 mb-3">
-                    Upload photos showing the resolved issue. This increases credibility and speeds up verification.
-                  </p>
-                  
-                  {/* Image Previews */}
-                  {responseImagePreviews.length > 0 && (
-                    <div className="flex gap-3 flex-wrap mb-4">
-                      {responseImagePreviews.map((preview, index) => (
-                        <div key={index} className="relative group">
-                          <img 
-                            src={preview} 
-                            alt={`Proof ${index + 1}`} 
-                            className="w-24 h-24 object-cover rounded-xl border-2 border-slate-200"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removeImage(index)}
-                            className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <FiX className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Upload Button */}
-                  {responseImages.length < 5 && (
-                    <label className="flex items-center justify-center gap-2 px-6 py-4 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-emerald-500 hover:bg-emerald-50 transition-all">
-                      <FiUpload className="text-slate-400" />
-                      <span className="font-semibold text-slate-500">Click to upload images</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        onChange={handleImageSelect}
-                        className="hidden"
-                      />
-                    </label>
-                  )}
-                  <p className="text-xs text-slate-400 mt-2">Max 5 images, each up to 5MB</p>
-                </div>
-
-                {/* Submit Button */}
-                <div className="flex gap-4 pt-4">
-                  <button
-                    onClick={submitResponse}
-                    disabled={submittingResponse || !responseText.trim()}
-                    className="flex-1 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    {submittingResponse ? (
-                      <>
-                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                        Submitting...
-                      </>
-                    ) : (
-                      <>
-                        <FiSend /> Submit Response
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={closeResponseModal}
-                    className="px-8 py-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-all"
-                  >
-                    Cancel
-                  </button>
-                </div>
+            {activeTab === 'properties' && (
+              <div className="od-props-grid fade-up fade-up-4">
+                {properties.length === 0 ? (
+                  <div className="od-empty glass" style={{ gridColumn: '1 / -1' }}>
+                    <span style={{ fontSize: 28, opacity: 0.3 }}>🏠</span>
+                    <p>No properties yet.</p>
+                    <Link to="/owner/add-property" className="ss-btn ss-btn-emerald" style={{ textDecoration: 'none', marginTop: 12 }}>Add Your First Property →</Link>
+                  </div>
+                ) : properties.map((p, i) => {
+                  const score = p.trustScore ?? p.safetyScore ?? 0;
+                  const color = score >= 80 ? 'var(--emerald)' : score >= 50 ? 'var(--amber)' : 'var(--rose)';
+                  return (
+                    <Link key={p._id} to={`/accommodations/${p._id}`} className="od-prop-card glass" style={{ textDecoration: 'none', animationDelay: `${i * 0.05}s` }}>
+                      <div className="od-prop-top">
+                        <div className="od-prop-icon">🏠</div>
+                        <span className="od-prop-score" style={{ color }}>{score}%</span>
+                      </div>
+                      <h3 className="od-prop-name">{p.name}</h3>
+                      <p className="od-prop-addr">{p.address}, {p.city}</p>
+                      <div className="od-prop-reports">
+                        <span>⚠️ {p.totalReports || 0} reports</span>
+                        <span style={{ color: 'var(--indigo)' }}>View →</span>
+                      </div>
+                    </Link>
+                  );
+                })}
               </div>
             )}
           </div>
         </div>
-      )}
-    </div>
+
+        {/* Response Modal */}
+        {showModal && selFeedback && (
+          <div className="od-modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowModal(false); }}>
+            <div className="od-modal glass-hi fade-up">
+              {resSuccess ? (
+                <div style={{ textAlign: 'center', padding: '32px 0' }}>
+                  <div className="od-success-icon">✓</div>
+                  <h3 style={{ color: 'var(--text-1)', marginBottom: 8 }}>Response Submitted!</h3>
+                  <p style={{ color: 'var(--text-2)', fontSize: 13 }}>Report marked as resolved.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="od-modal-header">
+                    <div>
+                      <p style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--emerald)', marginBottom: 6 }}>Respond to Report</p>
+                      <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-1)' }}>{selFeedback.accommodationId?.name}</h3>
+                    </div>
+                    <button onClick={() => setShowModal(false)} className="od-modal-close">✕</button>
+                  </div>
+
+                  <div className="od-modal-report">
+                    <span className="od-modal-cat">{selFeedback.category}</span>
+                    <p>{selFeedback.description}</p>
+                  </div>
+
+                  <div className="field-group" style={{ marginBottom: 16 }}>
+                    <label className="field-label">Your Response</label>
+                    <textarea className="ss-input" style={{ resize: 'none', minHeight: 110 }}
+                      placeholder="Describe what action you've taken to resolve this issue…"
+                      value={responseText} onChange={e => setResponseText(e.target.value)} />
+                  </div>
+
+                  {previews.length > 0 && (
+                    <div className="od-previews">
+                      {previews.map((p, i) => <img key={i} src={p} alt="" className="od-preview-img" />)}
+                    </div>
+                  )}
+
+                  <input type="file" ref={fileRef} multiple accept="image/*" style={{ display: 'none' }} onChange={handleImages} />
+
+                  <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                    <button onClick={() => fileRef.current?.click()} className="ss-btn ss-btn-ghost" style={{ fontSize: 12, flex: 1 }}>
+                      📎 Attach Photos
+                    </button>
+                    <button onClick={submitResponse} disabled={submitting || !responseText.trim()} className="ss-btn ss-btn-emerald" style={{ fontSize: 13, flex: 2 }}>
+                      {submitting ? <Spinner size={14} /> : null}
+                      {submitting ? 'Submitting…' : 'Submit Response →'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </SubtleOrb>
+    </>
   );
 }
+
+const CSS = `
+  .od-page { min-height: 100vh; background: transparent; padding-top: 60px; }
+
+  .od-header { background: rgba(5,5,10,0.75); border-bottom: 1px solid var(--border); padding: 40px 0 0; margin-bottom: 40px; backdrop-filter: blur(12px); }
+  .od-header-inner { max-width: 1100px; margin: 0 auto; padding: 0 32px; display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; flex-wrap: wrap; gap: 16px; }
+  .od-eyebrow { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: var(--emerald); margin-bottom: 8px; }
+  .od-title { font-size: 2rem; font-weight: 700; letter-spacing: -0.04em; color: var(--text-1); margin-bottom: 4px; }
+  .od-sub { font-size: 13px; color: var(--text-2); }
+  .od-header-actions { display: flex; gap: 10px; align-items: center; padding-top: 12px; }
+
+  .od-stats { max-width: 1100px; margin: 0 auto; padding: 0 32px 32px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border-top: 1px solid var(--border); }
+  @media(max-width: 700px) { .od-stats { grid-template-columns: repeat(2, 1fr); } }
+  .od-stat { padding: 20px 24px; background: rgba(5,5,10,0.8); display: flex; flex-direction: column; gap: 4px; }
+  .od-stat-icon { font-size: 18px; margin-bottom: 6px; }
+  .od-stat-num { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.04em; }
+  .od-stat-label { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); }
+
+  .od-body { max-width: 1100px; margin: 0 auto; padding: 0 32px 60px; }
+
+  .od-tabs { display: flex; gap: 4px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md); padding: 4px; width: fit-content; margin-bottom: 24px; }
+  .od-tab { padding: 9px 20px; border: none; background: transparent; cursor: none; font-family: var(--font-body); font-size: 13px; font-weight: 600; border-radius: 10px; color: var(--text-3); transition: all 0.2s; display: flex; align-items: center; gap: 8px; }
+  .od-tab:hover { color: var(--text-1); }
+  .od-tab-active { background: rgba(16,185,129,0.12); color: #6ee7b7; }
+  .od-badge { background: var(--amber); color: #000; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 100px; }
+
+  .od-feedbacks { display: flex; flex-direction: column; gap: 12px; }
+  .feedback-card { padding: 20px 24px; }
+  .feedback-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; gap: 12px; flex-wrap: wrap; }
+  .feedback-property { display: block; font-size: 14px; font-weight: 700; color: var(--text-1); margin-bottom: 3px; }
+  .feedback-category { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--indigo); }
+  .feedback-status { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 4px 10px; border-radius: 100px; border: 1px solid; white-space: nowrap; }
+  .feedback-desc { font-size: 13px; color: var(--text-2); line-height: 1.6; margin-bottom: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .feedback-footer { display: flex; justify-content: space-between; align-items: center; }
+  .feedback-date { font-size: 11px; color: var(--text-3); }
+
+  .od-empty { padding: 64px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .od-empty p { font-size: 13px; color: var(--text-3); }
+
+  .od-props-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+  .od-prop-card { padding: 22px; cursor: none; transition: border-color 0.25s, transform 0.2s; display: flex; flex-direction: column; }
+  .od-prop-card:hover { border-color: rgba(16,185,129,0.3); transform: translateY(-3px); }
+  .od-prop-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .od-prop-icon { width: 40px; height: 40px; border-radius: 12px; background: var(--panel); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 18px; }
+  .od-prop-score { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.04em; }
+  .od-prop-name { font-size: 14px; font-weight: 700; letter-spacing: -0.02em; color: var(--text-1); margin-bottom: 4px; }
+  .od-prop-addr { font-size: 12px; color: var(--text-2); margin-bottom: 14px; }
+  .od-prop-reports { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-3); margin-top: auto; }
+
+  /* Modal */
+  .od-modal-overlay {
+    position: fixed; inset: 0; z-index: 9000;
+    background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .od-modal { width: 100%; max-width: 500px; padding: 32px; border-radius: var(--r-xl); }
+  .od-modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+  .od-modal-close {
+    width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border);
+    background: transparent; cursor: none; color: var(--text-3);
+    font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;
+  }
+  .od-modal-close:hover { border-color: rgba(244,63,94,0.4); color: #fda4af; }
+  .od-modal-report {
+    padding: 14px 16px; border-radius: var(--r-sm);
+    background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+  .od-modal-cat { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--amber); display: block; margin-bottom: 6px; }
+  .od-modal-report p { font-size: 13px; color: var(--text-2); line-height: 1.6; }
+  .field-group { margin-bottom: 18px; }
+  .od-previews { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .od-preview-img { width: 72px; height: 72px; object-fit: cover; border-radius: var(--r-sm); border: 1px solid var(--border); }
+  .od-success-icon {
+    width: 72px; height: 72px; background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.3);
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 28px; margin: 0 auto 20px; color: var(--emerald);
+  }
+`;

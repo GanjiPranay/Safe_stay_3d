@@ -1,307 +1,355 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  FiShield, FiUsers, FiFileText, FiCheckCircle, FiAlertTriangle, 
-  FiTrendingUp, FiSearch, FiFilter, FiMoreVertical, FiTrash2, FiEye
-} from 'react-icons/fi';
+import { SubtleOrb, PageLoader, SkeletonCard, useToast } from './DesignSystem';
 
-interface Stats {
-  totalUsers: number;
-  totalAccommodations: number;
-  totalReports: number;
-  pendingReports: number;
-}
-
-interface Report {
-  _id: string;
-  category: string;
-  description: string;
-  status: string;
-  createdAt: string;
-  userId: {
-    name: string;
-  };
-  accommodationId: {
-    name: string;
-  };
-}
+interface Stats { totalUsers: number; totalAccommodations: number; totalReports: number; pendingReports: number; }
+interface Report { _id: string; category: string; description: string; status: string; createdAt: string; userId: { name: string }; accommodationId: { name: string }; }
 
 export default function AdminDashboard() {
-  const [stats, setStats] = useState<Stats | null>(null);
+  const [stats,   setStats]   = useState<Stats | null>(null);
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all');
-  const [searchTerm, setSearchTerm] = useState('');
-  
+  const [filter,  setFilter]  = useState('all');
+  const [search,  setSearch]  = useState('');
+  const [updating, setUpdating] = useState<string | null>(null);
   const navigate = useNavigate();
-  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  const toast    = useToast();
+  const API      = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    const role = localStorage.getItem('userRole');
-    
-    if (!token || role !== 'admin') {
-      navigate('/login');
-      return;
-    }
-    
-    fetchAdminData();
+    const role  = localStorage.getItem('userRole');
+    if (!token || role !== 'admin') { navigate('/login'); return; }
+    fetchAll();
   }, []);
 
-  const fetchAdminData = async () => {
+  const fetchAll = async () => {
     const token = localStorage.getItem('token');
     try {
-      const [statsRes, reportsRes] = await Promise.all([
-        fetch(`${API}/api/admin/stats`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${API}/api/admin/reports`, { headers: { 'Authorization': `Bearer ${token}` } })
+      const [sr, rr] = await Promise.all([
+        fetch(`${API}/api/admin/stats`,   { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API}/api/admin/reports`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
-      
-      const statsData = await statsRes.json();
-      const reportsData = await reportsRes.json();
-      
-      if (statsData.success) setStats(statsData.data);
-      if (reportsData.success) setReports(reportsData.data);
-    } catch (err) {
-      console.error('Error fetching admin data:', err);
-    } finally {
-      setLoading(false);
-    }
+      const sd = await sr.json(); const rd = await rr.json();
+      if (sd.success) setStats(sd.data);
+      if (rd.success) setReports(rd.data);
+    } catch { toast.error('Failed to load admin data'); } finally { setLoading(false); }
   };
 
-  const updateReportStatus = async (id: string, status: string) => {
+  const updateStatus = async (id: string, status: string) => {
     const token = localStorage.getItem('token');
+    setUpdating(id);
     try {
-      const response = await fetch(`${API}/api/admin/reports/${id}`, {
+      const res = await fetch(`${API}/api/admin/reports/${id}`, {
         method: 'PUT',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ status })
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
       });
-      
-      if (response.ok) {
-        setReports(reports.map(r => r._id === id ? { ...r, status } : r));
+      if (res.ok) {
+        setReports(r => r.map(x => x._id === id ? { ...x, status } : x));
+        toast.success(`Report marked as ${status}`);
+      } else {
+        toast.error('Failed to update status');
       }
-    } catch (err) {
-      console.error('Error updating report:', err);
-    }
+    } catch { toast.error('Connection error'); } finally { setUpdating(null); }
   };
 
-  const filteredReports = reports.filter(r => {
-    const matchesFilter = filter === 'all' || r.status === filter;
-    const matchesSearch = r.accommodationId.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          r.description.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesFilter && matchesSearch;
+  if (loading) return <PageLoader />;
+
+  const filtered = reports.filter(r => {
+    const mf = filter === 'all' || r.status === filter;
+    const ms = r.accommodationId?.name?.toLowerCase().includes(search.toLowerCase()) ||
+               r.description?.toLowerCase().includes(search.toLowerCase());
+    return mf && ms;
   });
 
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900"></div>
-    </div>
-  );
+  const statusCounts = {
+    pending:  reports.filter(r => r.status === 'pending').length,
+    approved: reports.filter(r => r.status === 'approved').length,
+    resolved: reports.filter(r => r.status === 'resolved').length,
+    rejected: reports.filter(r => r.status === 'rejected').length,
+  };
+
+  const statusConfig: Record<string, { label: string; color: string; bg: string; border: string }> = {
+    pending:  { label: 'Pending',  color: '#f59e0b', bg: 'rgba(245,158,11,0.1)',  border: 'rgba(245,158,11,0.3)'  },
+    approved: { label: 'Approved', color: '#6366f1', bg: 'rgba(99,102,241,0.1)',  border: 'rgba(99,102,241,0.3)'  },
+    resolved: { label: 'Resolved', color: '#10b981', bg: 'rgba(16,185,129,0.1)',  border: 'rgba(16,185,129,0.3)'  },
+    rejected: { label: 'Rejected', color: '#f43f5e', bg: 'rgba(244,63,94,0.1)',   border: 'rgba(244,63,94,0.3)'   },
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      {/* Header */}
-      <div className="bg-slate-900 text-white pt-12 pb-32">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-red-600 rounded-2xl shadow-lg shadow-red-900/20">
-                <FiShield className="h-8 w-8" />
-              </div>
+    <>
+      <style>{CSS}</style>
+      <SubtleOrb>
+        <div className="adm-page">
+          {/* Header */}
+          <header className="adm-header fade-up">
+            <div className="adm-header-inner">
               <div>
-                <h1 className="text-3xl font-black tracking-tight">Platform Moderation Center</h1>
-                <p className="text-slate-400 font-bold">Zencoder Admin Access Restricted</p>
+                <p className="adm-eyebrow">Admin Console</p>
+                <h1 className="adm-title">Platform Overview</h1>
+                <p className="adm-sub">Manage reports, users, and accommodation listings.</p>
+              </div>
+              <div className="adm-header-badge">
+                <span className="adm-badge-dot" />
+                Live Dashboard
               </div>
             </div>
-            <div className="flex gap-3">
-              <button className="bg-white/10 hover:bg-white/20 px-6 py-3 rounded-xl font-bold transition-all border border-white/10">Export Data</button>
-              <button className="bg-white text-slate-900 px-6 py-3 rounded-xl font-bold shadow-lg transition-all">Bulk Actions</button>
-            </div>
-          </div>
+          </header>
 
-          {/* Top Stats */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mt-12">
-            {[
-              { label: 'Total Users', value: stats?.totalUsers, icon: <FiUsers />, color: 'text-blue-400' },
-              { label: 'Accommodations', value: stats?.totalAccommodations, icon: <FiFileText />, color: 'text-emerald-400' },
-              { label: 'Total Reports', value: stats?.totalReports, icon: <FiFileText />, color: 'text-purple-400' },
-              { label: 'Pending Review', value: stats?.pendingReports, icon: <FiAlertTriangle />, color: 'text-red-400' }
-            ].map((stat, i) => (
-              <div key={i} className="bg-white/5 backdrop-blur-md border border-white/10 p-6 rounded-3xl">
-                <div className="flex justify-between items-start mb-4">
-                  <div className={`p-3 rounded-2xl bg-white/5 ${stat.color}`}>
-                    {stat.icon}
-                  </div>
-                </div>
-                <p className="text-3xl font-black text-white">{stat.value || 0}</p>
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mt-1">{stat.label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-16">
-        <div className="bg-white rounded-[2.5rem] shadow-2xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
-          
-          {/* Toolbar */}
-          <div className="p-8 border-b border-slate-50 flex flex-col lg:flex-row justify-between items-center gap-6">
-            <h2 className="text-xl font-black text-slate-900 whitespace-nowrap">Reports Requiring Review</h2>
-            
-            <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
-              {/* Search */}
-              <div className="relative w-full sm:w-64 group">
-                <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-slate-900 transition-colors" />
-                <input 
-                  type="text" 
-                  placeholder="Search reports..."
-                  className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:bg-white focus:border-slate-300 transition-all text-sm font-semibold"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-
-              {/* Filters */}
-              <div className="flex bg-slate-100 p-1 rounded-xl w-full sm:w-auto">
-                {['all', 'pending', 'approved', 'disputed'].map(f => (
-                  <button
-                    key={f}
-                    onClick={() => setFilter(f)}
-                    className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-                      filter === f ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    {f}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-slate-50/50">
-                  <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Reporter</th>
-                  <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Accommodation</th>
-                  <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Category</th>
-                  <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</th>
-                  <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Date</th>
-                  <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {filteredReports.map(report => (
-                  <tr key={report._id} className="hover:bg-slate-50/30 transition-colors group">
-                    <td className="px-8 py-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 font-black text-xs">
-                          {report.userId?.name.charAt(0)}
-                        </div>
-                        <span className="font-bold text-slate-900 text-sm">{report.userId?.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-8 py-6">
-                      <span className="font-bold text-slate-700 text-sm">{report.accommodationId?.name}</span>
-                    </td>
-                    <td className="px-8 py-6">
-                      <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-black uppercase tracking-widest">
-                        {report.category}
-                      </span>
-                    </td>
-                    <td className="px-8 py-6">
-                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                        report.status === 'pending' ? 'bg-yellow-50 text-yellow-600' :
-                        report.status === 'approved' ? 'bg-blue-50 text-blue-600' :
-                        report.status === 'resolved' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
-                      }`}>
-                        {report.status}
-                      </span>
-                    </td>
-                    <td className="px-8 py-6">
-                      <span className="text-slate-400 font-bold text-xs">{new Date(report.createdAt).toLocaleDateString()}</span>
-                    </td>
-                    <td className="px-8 py-6 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button 
-                          onClick={() => updateReportStatus(report._id, 'approved')}
-                          className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
-                          title="Approve"
-                        >
-                          <FiCheckCircle />
-                        </button>
-                        <button 
-                          onClick={() => updateReportStatus(report._id, 'disputed')}
-                          className="p-2 text-slate-400 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-all"
-                          title="Flag / Dispute"
-                        >
-                          <FiAlertTriangle />
-                        </button>
-                        <button className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all">
-                          <FiEye />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          
-          {filteredReports.length === 0 && (
-            <div className="p-20 text-center">
-              <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mx-auto mb-6">
-                <FiCheckCircle className="text-slate-200 text-3xl" />
-              </div>
-              <p className="text-slate-400 font-bold">No reports found matching your criteria.</p>
-            </div>
-          )}
-
-          <div className="p-8 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Showing {filteredReports.length} of {reports.length} reports</p>
-            <div className="flex gap-2">
-              <button className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 disabled:opacity-50">Previous</button>
-              <button className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600">Next</button>
-            </div>
-          </div>
-        </div>
-
-        {/* Audit Log / Activity */}
-        <div className="mt-12 grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 bg-white rounded-3xl p-8 border border-slate-100 shadow-xl shadow-slate-200/50">
-            <h3 className="text-lg font-black text-slate-900 mb-6 flex items-center gap-2">
-              <FiTrendingUp className="text-emerald-600" /> Platform Growth
-            </h3>
-            <div className="h-64 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100">
-              <p className="text-slate-400 font-bold text-sm italic">Analytics Visualization (Chart.js placeholder)</p>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-xl shadow-slate-200/50">
-            <h3 className="text-lg font-black text-slate-900 mb-6">System Health</h3>
-            <div className="space-y-6">
+          <div className="adm-body">
+            {/* Stat cards */}
+            <div className="adm-stats fade-up fade-up-2">
               {[
-                { label: 'API Server', status: 'Operational', color: 'text-emerald-500' },
-                { label: 'Database', status: 'Operational', color: 'text-emerald-500' },
-                { label: 'Storage', status: '92% Free', color: 'text-blue-500' },
-                { label: 'Email Service', status: 'Operational', color: 'text-emerald-500' }
-              ].map((item, i) => (
-                <div key={i} className="flex justify-between items-center">
-                  <span className="text-sm font-bold text-slate-500">{item.label}</span>
-                  <span className={`text-[10px] font-black uppercase tracking-widest ${item.color}`}>{item.status}</span>
+                { label: 'Total Users',        value: stats?.totalUsers || 0,          icon: '👥', color: 'var(--indigo)'  },
+                { label: 'Accommodations',      value: stats?.totalAccommodations || 0, icon: '🏠', color: 'var(--violet)'  },
+                { label: 'Total Reports',       value: stats?.totalReports || 0,        icon: '📋', color: 'var(--amber)'   },
+                { label: 'Pending Review',      value: stats?.pendingReports || 0,      icon: '⏳', color: 'var(--rose)'    },
+              ].map((s, i) => (
+                <div key={i} className="adm-stat-card glass">
+                  <div className="adm-stat-icon">{s.icon}</div>
+                  <div className="adm-stat-num" style={{ color: s.color }}>{s.value}</div>
+                  <div className="adm-stat-label">{s.label}</div>
+                  <div className="adm-stat-bar" style={{ background: `linear-gradient(90deg, ${s.color}40 0%, transparent 100%)` }} />
                 </div>
               ))}
             </div>
-            <button className="w-full mt-8 py-3 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 transition-all">
-              View Audit Logs
-            </button>
+
+            {/* Status breakdown */}
+            <div className="adm-breakdown glass fade-up fade-up-3">
+              <h3 className="adm-section-title">Report Status Breakdown</h3>
+              <div className="adm-breakdown-grid">
+                {Object.entries(statusCounts).map(([key, count]) => {
+                  const cfg = statusConfig[key];
+                  const total = reports.length || 1;
+                  const pct = Math.round((count / total) * 100);
+                  return (
+                    <div key={key} className="adm-breakdown-item">
+                      <div className="adm-breakdown-header">
+                        <span className="adm-status-dot" style={{ background: cfg.color }} />
+                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>{cfg.label}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: 14, fontWeight: 700, color: cfg.color }}>{count}</span>
+                      </div>
+                      <div className="adm-bar-track">
+                        <div className="adm-bar-fill" style={{ width: `${pct}%`, background: cfg.color }} />
+                      </div>
+                      <span style={{ fontSize: 10, color: 'var(--text-3)' }}>{pct}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Filters toolbar */}
+            <div className="adm-toolbar glass fade-up fade-up-3">
+              <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+                <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', opacity: 0.5, fontSize: 13 }}>🔍</span>
+                <input type="text" className="ss-input" style={{ paddingLeft: 40 }} placeholder="Search by property or description…"
+                  value={search} onChange={e => setSearch(e.target.value)} />
+              </div>
+
+              <div className="adm-filter-group">
+                {['all', 'pending', 'approved', 'resolved', 'rejected'].map(f => (
+                  <button key={f} onClick={() => setFilter(f)}
+                    className={`adm-filter-btn ${filter === f ? 'adm-filter-active' : ''}`}
+                    style={filter === f && f !== 'all' ? {
+                      background: statusConfig[f]?.bg || 'rgba(99,102,241,0.15)',
+                      borderColor: statusConfig[f]?.border || 'rgba(99,102,241,0.4)',
+                      color: statusConfig[f]?.color || '#a5b4fc',
+                    } : {}}>
+                    {f.charAt(0).toUpperCase() + f.slice(1)}
+                    {f !== 'all' && <span className="adm-filter-count">{statusCounts[f as keyof typeof statusCounts] ?? 0}</span>}
+                  </button>
+                ))}
+              </div>
+
+              <span style={{ fontSize: 12, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
+                {filtered.length} report{filtered.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+
+            {/* Reports table */}
+            <div className="adm-table-wrap glass fade-up fade-up-4">
+              {filtered.length === 0 ? (
+                <div className="adm-empty">
+                  <span style={{ fontSize: 28, opacity: 0.3 }}>📋</span>
+                  <p>No reports match your filter</p>
+                </div>
+              ) : (
+                <table className="ss-table">
+                  <thead>
+                    <tr>
+                      <th>Property</th>
+                      <th>Reporter</th>
+                      <th>Description</th>
+                      <th>Status</th>
+                      <th>Date</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map(r => {
+                      const cfg = statusConfig[r.status] || statusConfig.pending;
+                      return (
+                        <tr key={r._id}>
+                          <td style={{ fontWeight: 600, color: 'var(--text-1)', maxWidth: 160 }}>
+                            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {r.accommodationId?.name || '—'}
+                            </div>
+                          </td>
+                          <td style={{ color: 'var(--text-2)', fontSize: 12 }}>{r.userId?.name || 'Anonymous'}</td>
+                          <td style={{ maxWidth: 220 }}>
+                            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, color: 'var(--text-2)' }}>
+                              {r.description}
+                            </div>
+                          </td>
+                          <td>
+                            <span className="adm-status-badge" style={{ color: cfg.color, background: cfg.bg, borderColor: cfg.border }}>
+                              {cfg.label}
+                            </span>
+                          </td>
+                          <td style={{ fontSize: 11, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
+                            {new Date(r.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}
+                          </td>
+                          <td>
+                            <div className="adm-action-btns">
+                              {r.status !== 'approved' && (
+                                <button className="adm-action-btn adm-action-approve"
+                                  disabled={updating === r._id}
+                                  onClick={() => updateStatus(r._id, 'approved')}>
+                                  Approve
+                                </button>
+                              )}
+                              {r.status !== 'resolved' && (
+                                <button className="adm-action-btn adm-action-resolve"
+                                  disabled={updating === r._id}
+                                  onClick={() => updateStatus(r._id, 'resolved')}>
+                                  Resolve
+                                </button>
+                              )}
+                              {r.status !== 'rejected' && (
+                                <button className="adm-action-btn adm-action-reject"
+                                  disabled={updating === r._id}
+                                  onClick={() => updateStatus(r._id, 'rejected')}>
+                                  Reject
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </div>
+      </SubtleOrb>
+    </>
   );
 }
+
+const CSS = `
+  .adm-page { min-height: 100vh; background: transparent; padding-top: 60px; }
+
+  .adm-header {
+    background: rgba(5,5,10,0.75); border-bottom: 1px solid var(--border);
+    padding: 40px 0 32px; margin-bottom: 40px; backdrop-filter: blur(12px);
+  }
+  .adm-header-inner {
+    max-width: 1100px; margin: 0 auto; padding: 0 32px;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    flex-wrap: wrap; gap: 16px;
+  }
+  .adm-eyebrow { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: var(--amber); margin-bottom: 8px; }
+  .adm-title { font-size: 2rem; font-weight: 700; letter-spacing: -0.04em; color: var(--text-1); margin-bottom: 4px; }
+  .adm-sub { font-size: 13px; color: var(--text-2); }
+
+  .adm-header-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 16px; border-radius: 100px;
+    border: 1px solid rgba(245,158,11,0.3); background: rgba(245,158,11,0.08);
+    font-size: 12px; font-weight: 600; color: var(--amber);
+  }
+  .adm-badge-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--amber);
+    animation: pulsate 2s ease-in-out infinite;
+  }
+
+  .adm-body { max-width: 1100px; margin: 0 auto; padding: 0 32px 60px; }
+
+  .adm-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+  @media(max-width: 800px) { .adm-stats { grid-template-columns: repeat(2, 1fr); } }
+
+  .adm-stat-card {
+    padding: 22px; position: relative; overflow: hidden;
+    transition: border-color 0.25s, transform 0.2s;
+  }
+  .adm-stat-card:hover { border-color: rgba(99,102,241,0.25); transform: translateY(-2px); }
+  .adm-stat-icon { font-size: 20px; margin-bottom: 10px; }
+  .adm-stat-num { font-size: 2rem; font-weight: 700; letter-spacing: -0.04em; margin-bottom: 4px; }
+  .adm-stat-label { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); }
+  .adm-stat-bar {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
+  }
+
+  .adm-breakdown {
+    padding: 24px; margin-bottom: 20px; border-radius: var(--r-lg);
+  }
+  .adm-section-title { font-size: 13px; font-weight: 600; color: var(--text-1); margin-bottom: 20px; }
+  .adm-breakdown-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+  @media(max-width: 700px) { .adm-breakdown-grid { grid-template-columns: repeat(2, 1fr); } }
+
+  .adm-breakdown-item { display: flex; flex-direction: column; gap: 6px; }
+  .adm-breakdown-header { display: flex; align-items: center; gap: 8px; }
+  .adm-status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .adm-bar-track { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+  .adm-bar-fill { height: 100%; border-radius: 2px; transition: width 1s cubic-bezier(.22,.68,0,1.2); }
+
+  .adm-toolbar {
+    padding: 16px 20px; margin-bottom: 16px; border-radius: var(--r-lg);
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  .adm-filter-group { display: flex; gap: 4px; }
+  .adm-filter-btn {
+    padding: 7px 14px; border: 1px solid var(--border);
+    background: transparent; border-radius: var(--r-sm); cursor: none;
+    font-family: var(--font-body); font-size: 12px; font-weight: 600;
+    color: var(--text-3); transition: all 0.2s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .adm-filter-btn:hover { color: var(--text-1); border-color: var(--border-hi); }
+  .adm-filter-active { color: #a5b4fc; background: rgba(99,102,241,0.15); border-color: rgba(99,102,241,0.35); }
+  .adm-filter-count {
+    background: rgba(255,255,255,0.1); padding: 1px 6px; border-radius: 100px;
+    font-size: 10px; font-weight: 700;
+  }
+
+  .adm-table-wrap { border-radius: var(--r-lg); overflow: hidden; }
+  .adm-empty {
+    padding: 56px; text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+  }
+  .adm-empty p { font-size: 13px; color: var(--text-3); }
+
+  .adm-status-badge {
+    display: inline-flex; align-items: center;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+    padding: 3px 9px; border-radius: 100px; border: 1px solid; white-space: nowrap;
+  }
+
+  .adm-action-btns { display: flex; gap: 6px; }
+  .adm-action-btn {
+    padding: 5px 11px; border-radius: var(--r-sm); border: 1px solid;
+    font-family: var(--font-body); font-size: 11px; font-weight: 600;
+    cursor: none; transition: all 0.2s; background: transparent;
+  }
+  .adm-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .adm-action-approve { border-color: rgba(99,102,241,0.3); color: #a5b4fc; }
+  .adm-action-approve:hover { background: rgba(99,102,241,0.12); }
+  .adm-action-resolve { border-color: rgba(16,185,129,0.3); color: #6ee7b7; }
+  .adm-action-resolve:hover { background: rgba(16,185,129,0.12); }
+  .adm-action-reject  { border-color: rgba(244,63,94,0.3); color: #fda4af; }
+  .adm-action-reject:hover  { background: rgba(244,63,94,0.08); }
+`;

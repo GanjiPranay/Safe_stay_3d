@@ -1,265 +1,238 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { FiUserPlus, FiMail, FiLock, FiUser, FiShield, FiCheckCircle, FiArrowRight } from 'react-icons/fi';
+import { OrbBackground, Spinner } from './DesignSystem';
 
 export const Register: React.FC = () => {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'student' | 'owner'>('student');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [passwordStrength, setPasswordStrength] = useState(0);
-  
+  const [name, setName]             = useState('');
+  const [email, setEmail]           = useState('');
+  const [password, setPassword]     = useState('');
+  const [confirmPw, setConfirmPw]   = useState('');
+  const [role, setRole]             = useState<'student' | 'owner'>('student');
+  const [agreed, setAgreed]         = useState(false);
+  const [error, setError]           = useState('');
+  const [loading, setLoading]       = useState(false);
+  const [strength, setStrength]     = useState(0);
+  const [showPw, setShowPw]         = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [emailError, setEmailError] = useState('');
+
   const { register } = useAuth();
-  const navigate = useNavigate();
+  const navigate     = useNavigate();
 
   useEffect(() => {
-    // Simple password strength logic
-    let strength = 0;
-    if (password.length > 5) strength += 1;
-    if (password.length > 8) strength += 1;
-    if (/[A-Z]/.test(password)) strength += 1;
-    if (/[0-9]/.test(password)) strength += 1;
-    if (/[^A-Za-z0-9]/.test(password)) strength += 1;
-    setPasswordStrength(strength);
+    let s = 0;
+    if (password.length > 5) s++;
+    if (password.length > 8) s++;
+    if (/[A-Z]/.test(password)) s++;
+    if (/[0-9]/.test(password)) s++;
+    if (/[^A-Za-z0-9]/.test(password)) s++;
+    setStrength(s);
   }, [password]);
+
+  const validateEmail = (val: string) => {
+    if (!val) { setEmailError(''); return; }
+    const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+    setEmailError(ok ? '' : 'Please enter a valid email address');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (password !== confirmPw) { setError('Passwords do not match'); return; }
+    if (password.length < 6)   { setError('Password must be at least 6 characters'); return; }
+    if (!agreed) { setError('Please accept the Terms of Service to continue'); return; }
     setLoading(true);
-
     try {
       await register(name, email, password, role);
-      navigate('/verify-email', { state: { email: email } });
+      navigate('/verify-email', { state: { email } });
     } catch (err: any) {
-      if (err.message?.includes('verify') || err.message?.includes('Verification')) {
-        navigate('/verify-email', { state: { email: email } });
-        return;
-      }
-      setError(err.message || 'Registration failed. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+      if (err.message?.includes('verify')) { navigate('/verify-email', { state: { email } }); return; }
+      setError(err.message || 'Registration failed.');
+    } finally { setLoading(false); }
   };
 
-  const strengthColor = () => {
-    if (passwordStrength < 2) return 'bg-red-500';
-    if (passwordStrength < 4) return 'bg-yellow-500';
-    return 'bg-green-500';
-  };
-
-  const strengthText = () => {
-    if (password.length === 0) return '';
-    if (passwordStrength < 2) return 'Weak';
-    if (passwordStrength < 4) return 'Medium';
-    return 'Strong';
-  };
+  const strengthLabel = strength < 2 ? 'Weak' : strength < 4 ? 'Medium' : 'Strong';
+  const strengthColor = strength < 2 ? '#f43f5e' : strength < 4 ? '#f59e0b' : '#10b981';
+  const pwMatch = confirmPw.length > 0 && password === confirmPw;
+  const pwMismatch = confirmPw.length > 0 && password !== confirmPw;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
-      {/* Animated Background Elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 -left-40 w-96 h-96 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse"></div>
-        <div className="absolute bottom-1/4 -right-40 w-96 h-96 bg-indigo-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" style={{ animationDelay: '1.5s' }}></div>
-      </div>
-
-      <div className="max-w-5xl w-full flex bg-white rounded-3xl shadow-2xl overflow-hidden relative z-10">
-        {/* Left Side: Illustration/Branding */}
-        <div className="hidden lg:flex lg:w-2/5 bg-indigo-600 p-12 text-white flex-col justify-between relative">
-          <div className="absolute inset-0 bg-gradient-to-br from-indigo-600 to-blue-700 opacity-95"></div>
-          <div className="relative z-10">
-            <Link to="/" className="flex items-center space-x-2 text-2xl font-bold mb-12">
-              <FiShield className="h-8 w-8 text-yellow-400" />
-              <span>SafetyFirst</span>
-            </Link>
-            
-            <h2 className="text-4xl font-extrabold mb-8 leading-tight">
-              Join the <span className="text-yellow-400">Safety Movement</span>
-            </h2>
-            
-            <div className="space-y-6">
-              {[
-                { title: "Report issues anonymously", desc: "Your identity is protected while your voice is heard." },
-                { title: "Access verified safety data", desc: "See real reports from real residents before you move." },
-                { title: "Get email notifications", desc: "Stay updated on safety alerts in your area." }
-              ].map((benefit, i) => (
-                <div key={i} className="flex space-x-4">
-                  <div className="mt-1">
-                    <FiCheckCircle className="text-green-400 h-6 w-6" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-lg">{benefit.title}</h4>
-                    <p className="text-indigo-100 text-sm">{benefit.desc}</p>
-                  </div>
-                </div>
-              ))}
+    <>
+      <style>{CSS}</style>
+      <OrbBackground intensity="subtle" accentColor="8b5cf6">
+        <div className="reg-page">
+          <div className="reg-card glass-hi fade-up">
+            <div className="reg-header">
+              <Link to="/" className="brand">
+                <span className="brand-icon">⬡</span> SafeStay
+              </Link>
+              <div>
+                <p className="form-eyebrow">Join for free</p>
+                <h2 className="form-heading">Create your account</h2>
+                <p className="form-sub">Start your journey towards safer student housing.</p>
+              </div>
             </div>
-          </div>
-          
-          <div className="relative z-10 pt-8 border-t border-white/10">
-            <p className="text-indigo-100 text-sm italic">
-              "By signing up, you're helping make student housing safer for everyone."
-            </p>
-          </div>
-        </div>
 
-        {/* Right Side: Form */}
-        <div className="w-full lg:w-3/5 p-8 sm:p-12">
-          <div className="mb-8 text-center lg:text-left">
-            <h2 className="text-3xl font-extrabold text-gray-900 mb-2">
-              Create Your Account
-            </h2>
-            <p className="text-gray-500">
-              Start your journey towards safer student living
-            </p>
-          </div>
+            {error && <div className="ss-error" style={{ marginBottom: 20 }}>{error}</div>}
 
-          <form className="grid grid-cols-1 md:grid-cols-2 gap-6" onSubmit={handleSubmit}>
-            {error && (
-              <div className="col-span-full bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm flex items-center">
-                <FiShield className="mr-2 h-4 w-4 rotate-180" />
-                {error}
-              </div>
-            )}
-            
-            <div className="space-y-4 col-span-full">
-              <div>
-                <label htmlFor="name" className="block text-sm font-semibold text-gray-700 mb-1">
-                  Full name
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <FiUser className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    id="name"
-                    name="name"
-                    type="text"
-                    required
-                    className="block w-full pl-10 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none text-gray-900 placeholder-gray-400"
-                    placeholder="John Doe"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                  />
+            <form onSubmit={handleSubmit}>
+              <div className="form-row">
+                <div className="field-group">
+                  <label className="field-label">Full Name</label>
+                  <input type="text" className="ss-input" placeholder="Jane Doe"
+                    value={name} onChange={e => setName(e.target.value)} required />
                 </div>
-              </div>
-
-              <div>
-                <label htmlFor="email-address" className="block text-sm font-semibold text-gray-700 mb-1">
-                  Email address
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <FiMail className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    id="email-address"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                    className="block w-full pl-10 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none text-gray-900 placeholder-gray-400"
-                    placeholder="name@university.edu"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-1">
-                    Password
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <FiLock className="h-5 w-5 text-gray-400" />
-                    </div>
-                    <input
-                      id="password"
-                      name="password"
-                      type="password"
-                      autoComplete="new-password"
-                      required
-                      className="block w-full pl-10 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none text-gray-900 placeholder-gray-400"
-                      placeholder="••••••••"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                    />
-                  </div>
-                  {password.length > 0 && (
-                    <div className="mt-2">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-[10px] uppercase tracking-wider font-bold text-gray-400">Strength: {strengthText()}</span>
-                      </div>
-                      <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
-                        <div 
-                          className={`h-full transition-all duration-500 ${strengthColor()}`} 
-                          style={{ width: `${(passwordStrength / 5) * 100}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <label htmlFor="role" className="block text-sm font-semibold text-gray-700 mb-1">
-                    I am a...
-                  </label>
-                  <select
-                    id="role"
-                    value={role}
-                    onChange={(e) => setRole(e.target.value as 'student' | 'owner')}
-                    className="block w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none text-gray-900 bg-white"
-                  >
+                <div className="field-group">
+                  <label className="field-label">I am a…</label>
+                  <select className="ss-input" value={role} onChange={e => setRole(e.target.value as any)}
+                    style={{ appearance: 'none', cursor: 'none' }}>
                     <option value="student">Student / Resident</option>
                     <option value="owner">Property Owner</option>
                   </select>
                 </div>
               </div>
-            </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="col-span-full group w-full flex justify-center items-center py-4 px-6 border border-transparent text-lg font-bold rounded-xl text-white bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition-all transform hover:scale-[1.01] active:scale-[0.99]"
-            >
-              {loading ? (
-                <span className="flex items-center">
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Creating Account...
+              <div className="field-group">
+                <label className="field-label">Email Address</label>
+                <input type="email" className="ss-input" placeholder="name@university.edu"
+                  value={email}
+                  onChange={e => { setEmail(e.target.value); validateEmail(e.target.value); }}
+                  required
+                  style={emailError ? { borderColor: 'rgba(244,63,94,0.5)' } : {}}
+                />
+                {emailError && <p style={{ fontSize: 11, color: '#fda4af', marginTop: 6 }}>{emailError}</p>}
+              </div>
+
+              <div className="field-group">
+                <label className="field-label">Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input type={showPw ? 'text' : 'password'} className="ss-input" placeholder="Min. 6 characters"
+                    value={password} onChange={e => setPassword(e.target.value)} required minLength={6} />
+                  <button type="button" className="eye-btn" onClick={() => setShowPw(!showPw)}>
+                    {showPw ? '🙈' : '👁'}
+                  </button>
+                </div>
+                {password.length > 0 && (
+                  <div className="strength-bar">
+                    <div className="strength-track">
+                      {[1,2,3,4,5].map(n => (
+                        <div key={n} className="strength-seg"
+                          style={{ background: n <= strength ? strengthColor : 'rgba(255,255,255,0.08)', transition: 'background 0.3s' }} />
+                      ))}
+                    </div>
+                    <span className="strength-label" style={{ color: strengthColor }}>{strengthLabel}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="field-group">
+                <label className="field-label">Confirm Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input type={showConfirm ? 'text' : 'password'} className="ss-input" placeholder="Repeat your password"
+                    value={confirmPw} onChange={e => setConfirmPw(e.target.value)} required minLength={6}
+                    style={pwMismatch ? { borderColor: 'rgba(244,63,94,0.5)' } : pwMatch ? { borderColor: 'rgba(16,185,129,0.5)' } : {}}
+                  />
+                  <button type="button" className="eye-btn" onClick={() => setShowConfirm(!showConfirm)}>
+                    {showConfirm ? '🙈' : '👁'}
+                  </button>
+                  {pwMatch    && <span className="pw-status pw-ok">✓</span>}
+                  {pwMismatch && <span className="pw-status pw-err">✕</span>}
+                </div>
+                {pwMismatch && <p style={{ fontSize: 11, color: '#fda4af', marginTop: 6 }}>Passwords do not match</p>}
+              </div>
+
+              {/* Terms checkbox */}
+              <label className="terms-row">
+                <div className={`checkbox-wrap ${agreed ? 'checked' : ''}`} onClick={() => setAgreed(!agreed)}>
+                  {agreed && <span className="checkbox-tick">✓</span>}
+                </div>
+                <span className="terms-text">
+                  I agree to the{' '}
+                  <a href="#" onClick={e => e.preventDefault()}>Terms of Service</a>
+                  {' '}and{' '}
+                  <a href="#" onClick={e => e.preventDefault()}>Privacy Policy</a>
                 </span>
-              ) : (
-                <>
-                  Start Protecting Yourself
-                  <FiArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-                </>
-              )}
-            </button>
-          </form>
+              </label>
 
-          <div className="mt-8 text-center space-y-4">
-            <p className="text-gray-600 text-sm">
+              <button type="submit" disabled={loading || !!emailError || pwMismatch} className="ss-btn ss-btn-full" style={{ marginTop: 8 }}>
+                {loading ? <Spinner /> : null}
+                {loading ? 'Creating account…' : 'Start Protecting Yourself →'}
+              </button>
+            </form>
+
+            <p className="footer-note" style={{ marginTop: 24 }}>
               Already have an account?{' '}
-              <Link to="/login" className="text-indigo-600 font-bold hover:underline">
-                Sign in here
-              </Link>
+              <Link to="/login">Sign in here</Link>
             </p>
-            
-            <div className="pt-6 border-t border-gray-100">
-              <p className="text-gray-400 text-xs px-8 leading-relaxed">
-                By clicking "Start Protecting Yourself", you agree to our Terms of Service and Privacy Policy.
-              </p>
-            </div>
           </div>
         </div>
-      </div>
-    </div>
+      </OrbBackground>
+    </>
   );
 };
+
+const CSS = `
+  .reg-page {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 40px 24px;
+  }
+  .reg-card { width: 100%; max-width: 520px; padding: 48px 44px; }
+  .reg-header { margin-bottom: 32px; }
+
+  .brand {
+    display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
+    color: var(--text-1); font-weight: 700; font-size: 15px; letter-spacing: -0.02em;
+    margin-bottom: 28px;
+  }
+  .brand-icon {
+    font-size: 20px;
+    background: linear-gradient(135deg, var(--indigo), var(--violet));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .form-eyebrow { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: var(--violet); margin-bottom: 8px; }
+  .form-heading { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.04em; color: var(--text-1); margin-bottom: 6px; }
+  .form-sub { font-size: 13px; color: var(--text-2); }
+
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media(max-width: 480px) { .form-row { grid-template-columns: 1fr; } }
+  .field-group { margin-bottom: 18px; }
+
+  .eye-btn {
+    position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; cursor: none; font-size: 14px; opacity: 0.5; transition: opacity 0.2s;
+  }
+  .eye-btn:hover { opacity: 1; }
+
+  .pw-status {
+    position: absolute; right: 44px; top: 50%; transform: translateY(-50%);
+    font-size: 13px; font-weight: 700;
+  }
+  .pw-ok  { color: #10b981; }
+  .pw-err { color: #f43f5e; }
+
+  .strength-bar { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .strength-track { flex: 1; display: flex; gap: 3px; }
+  .strength-seg { flex: 1; height: 3px; border-radius: 2px; }
+  .strength-label { font-size: 11px; font-weight: 600; min-width: 42px; }
+
+  .terms-row {
+    display: flex; align-items: flex-start; gap: 10px; margin-bottom: 20px;
+    cursor: none; user-select: none;
+  }
+  .checkbox-wrap {
+    width: 18px; height: 18px; border-radius: 5px; flex-shrink: 0;
+    border: 1px solid var(--border); background: var(--panel);
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s; margin-top: 1px;
+  }
+  .checkbox-wrap.checked {
+    background: var(--indigo); border-color: var(--indigo);
+  }
+  .checkbox-tick { font-size: 11px; font-weight: 700; color: white; }
+  .terms-text { font-size: 12px; color: var(--text-2); line-height: 1.5; }
+  .terms-text a { color: var(--indigo); text-decoration: none; font-weight: 600; }
+
+  .footer-note { text-align: center; font-size: 12px; color: var(--text-2); }
+  .footer-note a { color: var(--indigo); text-decoration: none; font-weight: 600; }
+`;

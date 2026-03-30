@@ -1,35 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { 
-  FiUpload, FiAlertTriangle, FiHome, FiDroplet, FiUser, FiSearch, 
-  FiShield, FiCamera, FiCheckCircle, FiArrowRight, FiArrowLeft, FiInfo
-} from 'react-icons/fi';
 import { ImageUpload } from '../components/ImageUpload';
+import { OrbBackground, Spinner } from './DesignSystem';
 
-interface Image {
-  url: string;
-  publicId: string;
-}
-
-interface Accommodation {
-  _id: string;
-  name: string;
-  address: string;
-  city: string;
-  type?: string;
-}
+interface Image { url: string; publicId: string; }
+interface Accommodation { _id: string; name: string; address: string; city: string; type?: string; }
 
 export const ReportIncident: React.FC = () => {
   const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const navigate = useNavigate();
-  
+
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     accommodation: '',
     issueType: 'Security' as 'Food Safety' | 'Water Quality' | 'Hygiene' | 'Security' | 'Infrastructure',
     description: '',
   });
-  
+
   const [accommodations, setAccommodations] = useState<Accommodation[]>([]);
   const [accommodationsLoading, setAccommodationsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -37,345 +24,331 @@ export const ReportIncident: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
-  useEffect(() => {
-    fetchAccommodations();
-  }, []);
+  useEffect(() => { fetchAccommodations(); }, []);
 
   const fetchAccommodations = async () => {
     try {
-      const response = await fetch(`${API}/api/accommodations/dropdown`);
-      const data = await response.json();
-      if (data.success) {
-        setAccommodations(data.data);
-      }
-    } catch (error) {
-      console.error('Error fetching accommodations:', error);
-    } finally {
-      setAccommodationsLoading(false);
-    }
+      const res = await fetch(`${API}/api/accommodations/dropdown`);
+      const data = await res.json();
+      if (data.success) setAccommodations(data.data);
+    } catch {}
+    finally { setAccommodationsLoading(false); }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData(p => ({ ...p, [name]: value }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!formData.accommodation) {
-      alert("Please select an accommodation");
-      setStep(1);
-      return;
-    }
-
-    if (!formData.description.trim()) {
-      alert("Please provide a description");
-      setStep(2);
-      return;
-    }
-
-    const token = localStorage.getItem("token");
-    if (!token) {
-      alert("Please login first");
-      navigate("/login");
-      return;
-    }
-
+  const handleSubmit = async () => {
+    if (!formData.accommodation) { alert('Please select an accommodation'); setStep(1); return; }
+    if (!formData.description.trim()) { alert('Please provide a description'); setStep(2); return; }
+    const token = localStorage.getItem('token');
+    if (!token) { alert('Please login first'); navigate('/login'); return; }
     setIsSubmitting(true);
-    
     try {
       const res = await fetch(`${API}/api/reports`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer " + token
-        },
-        body: JSON.stringify({ 
-          accommodation: formData.accommodation,
-          issueType: formData.issueType,
-          description: formData.description,
-          images: uploadedImages 
-        }),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ accommodation: formData.accommodation, issueType: formData.issueType, description: formData.description, images: uploadedImages }),
       });
-
       const data = await res.json();
-
-      if (data.success) {
-        setSubmitSuccess(true);
-        setUploadedImages([]);
-        setTimeout(() => {
-          navigate('/my-reports');
-        }, 2500);
-      } else {
-        alert(data.message || "Failed to submit report");
-      }
-    } catch (error) {
-      alert("Error submitting report");
-    } finally {
-      setIsSubmitting(false);
-    }
+      if (data.success) { setSubmitSuccess(true); setUploadedImages([]); setTimeout(() => navigate('/my-reports'), 2500); }
+      else alert(data.message || 'Failed to submit report');
+    } catch { alert('Error submitting report'); }
+    finally { setIsSubmitting(false); }
   };
 
-  const categories = [
-    { id: 'Food Safety', name: 'Food Safety', icon: <FiAlertTriangle />, desc: 'Unhygienic kitchen, food poisoning, pest issues', color: 'bg-orange-50 text-orange-600 border-orange-100' },
-    { id: 'Water Quality', name: 'Water Quality', icon: <FiDroplet />, desc: 'Contaminated water, irregular supply, dirty tanks', color: 'bg-blue-50 text-blue-600 border-blue-100' },
-    { id: 'Security', name: 'Security', icon: <FiShield />, desc: 'Broken locks, no CCTV, unauthorized access', color: 'bg-red-50 text-red-600 border-red-100' },
-    { id: 'Hygiene', name: 'Hygiene', icon: <FiCheckCircle />, desc: 'Dirty bathrooms, garbage issues, pest infestation', color: 'bg-green-50 text-green-600 border-green-100' },
-    { id: 'Infrastructure', name: 'Infrastructure', icon: <FiHome />, desc: 'Electrical hazards, broken furniture, leaks', color: 'bg-purple-50 text-purple-600 border-purple-100' },
+  const CATEGORIES = [
+    { id: 'Food Safety', icon: '🍽️', desc: 'Unhygienic kitchen, food poisoning, pest issues', color: '#f97316' },
+    { id: 'Water Quality', icon: '💧', desc: 'Contaminated water, irregular supply, dirty tanks', color: '#3b82f6' },
+    { id: 'Security', icon: '🔒', desc: 'Broken locks, no CCTV, unauthorized access', color: '#ef4444' },
+    { id: 'Hygiene', icon: '🧹', desc: 'Dirty bathrooms, garbage issues, pest infestation', color: '#a855f7' },
+    { id: 'Infrastructure', icon: '🏗️', desc: 'Electrical hazards, broken furniture, leaks', color: '#f59e0b' },
   ];
 
-  const filteredAccommodations = accommodations.filter(acc =>
+  const filteredAccom = accommodations.filter(acc =>
     acc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     acc.address?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     acc.city?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const selectedAccName = accommodations.find(a => a._id === formData.accommodation)?.name || "Selected Property";
+  const STEP_LABELS = ['Place', 'Describe', 'Evidence'];
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-12">
-      {/* Header */}
-      <div className="bg-slate-900 text-white pt-12 pb-24">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <Link to="/dashboard" className="inline-flex items-center text-blue-300 hover:text-white mb-6 transition-colors">
-            <FiArrowLeft className="mr-2" /> Back to Dashboard
-          </Link>
-          <h1 className="text-3xl font-extrabold">Report a Safety Concern</h1>
-          <p className="text-blue-200 mt-2">Help make student housing safer by sharing your experience.</p>
-        </div>
-      </div>
+    <>
+      <style>{CSS}</style>
+      <OrbBackground intensity="subtle" accentColor="ef4444">
+        <div className="ri-page">
+          <div className="ri-inner">
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 -mt-16">
-        <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden">
-          
-          {/* Step Indicator */}
-          <div className="bg-gray-50/50 border-b border-gray-100 px-8 py-6">
-            <div className="flex items-center justify-between max-w-2xl mx-auto">
-              {[
-                { s: 1, label: "Place" },
-                { s: 2, label: "Describe" },
-                { s: 3, label: "Evidence" }
-              ].map((item) => (
-                <div key={item.s} className="flex flex-col items-center relative z-10">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-300 ${
-                    step >= item.s ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'bg-gray-200 text-gray-500'
-                  }`}>
-                    {step > item.s ? <FiCheckCircle className="h-5 w-5" /> : item.s}
-                  </div>
-                  <span className={`text-xs mt-2 font-bold uppercase tracking-wider ${
-                    step >= item.s ? 'text-blue-600' : 'text-gray-400'
-                  }`}>{item.label}</span>
-                  {item.s < 3 && (
-                    <div className={`absolute top-5 left-10 w-[calc(100vw/4)] md:w-32 h-0.5 -z-10 ${
-                      step > item.s ? 'bg-blue-600' : 'bg-gray-200'
-                    }`}></div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="p-8 sm:p-12">
-            {submitSuccess ? (
-              <div className="text-center py-12">
-                <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce">
-                  <FiCheckCircle className="w-10 h-10 text-green-600" />
-                </div>
-                <h2 className="text-3xl font-extrabold text-gray-900 mb-2">Report Submitted!</h2>
-                <p className="text-gray-600 max-w-md mx-auto">
-                  Your safety report has been recorded. Our moderators will review it shortly. Redirecting you...
-                </p>
+            {/* Header */}
+            <header className="ri-header fade-up">
+              <Link to="/dashboard" className="ri-back-link">← Back to Dashboard</Link>
+              <div className="ri-badge">
+                <span className="ri-pulse" />
+                Anonymous Reporting Active
               </div>
-            ) : (
-              <div className="min-h-[400px] flex flex-col">
-                
-                {/* Step 1: Select Place & Category */}
-                {step === 1 && (
-                  <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div>
-                      <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <span className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-sm font-bold">1</span>
-                        Which property has the issue?
-                      </h3>
-                      
-                      {accommodationsLoading ? (
-                        <div className="h-12 w-full bg-gray-50 rounded-xl animate-pulse"></div>
-                      ) : (
-                        <div className="space-y-3">
-                          <div className="relative">
-                            <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input
-                              type="text"
-                              placeholder="Search by location, name, or city..."
-                              value={searchTerm}
-                              onChange={(e) => setSearchTerm(e.target.value)}
-                              className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                            />
-                          </div>
-                          <select
-                            name="accommodation"
-                            value={formData.accommodation}
-                            onChange={handleInputChange}
-                            className="w-full px-4 py-4 bg-white border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all appearance-none cursor-pointer"
-                          >
-                            <option value="">-- Choose Accommodation --</option>
-                            {(searchTerm ? filteredAccommodations : accommodations).map((acc) => (
-                              <option key={acc._id} value={acc._id}>
-                                {acc.name} - {acc.address}, {acc.city}
-                              </option>
-                            ))}
-                          </select>
-                          {accommodations.length === 0 && (
-                            <p className="text-sm text-orange-600 font-medium bg-orange-50 p-4 rounded-xl border border-orange-100">
-                              No accommodations registered yet. Know one? Tell owners to register!
-                            </p>
-                          )}
+              <h1 className="ri-title">Report a <em>Safety Concern</em></h1>
+              <p className="ri-sub">Your identity stays protected. Every report creates accountability for safer student housing.</p>
+            </header>
+
+            {/* Card */}
+            <div className="ri-card glass fade-up fade-up-2">
+
+              {/* Step indicator */}
+              <div className="ri-steps">
+                {STEP_LABELS.map((label, i) => {
+                  const n = i + 1;
+                  return (
+                    <React.Fragment key={n}>
+                      <div className="ri-step">
+                        <div className={`ri-step-circle ${step >= n ? 'ri-step-active' : ''} ${submitSuccess ? 'ri-step-done' : ''}`}>
+                          {step > n ? '✓' : n}
                         </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <span className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-sm font-bold">2</span>
-                        What kind of issue is it?
-                      </h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {categories.map((cat) => (
-                          <button
-                            key={cat.id}
-                            type="button"
-                            onClick={() => setFormData(prev => ({ ...prev, issueType: cat.id as any }))}
-                            className={`p-5 rounded-2xl border-2 text-left transition-all hover:shadow-lg ${
-                              formData.issueType === cat.id
-                                ? `ring-2 ring-blue-500 ${cat.color}`
-                                : 'border-gray-100 bg-white text-gray-700 hover:border-gray-200'
-                            }`}
-                          >
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${
-                              formData.issueType === cat.id ? 'bg-white shadow-sm' : 'bg-gray-50'
-                            }`}>
-                              {React.cloneElement(cat.icon as React.ReactElement, { className: 'h-6 w-6' })}
-                            </div>
-                            <h4 className="font-bold mb-1">{cat.name}</h4>
-                            <p className="text-[11px] leading-tight opacity-70">{cat.desc}</p>
-                          </button>
-                        ))}
+                        <span className={`ri-step-label ${step >= n ? 'ri-step-label-active' : ''}`}>{label}</span>
                       </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Step 2: Description */}
-                {step === 2 && (
-                  <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-                    <div>
-                      <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <span className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-sm font-bold">3</span>
-                        Describe what happened (be specific - it helps!)
-                      </h3>
-                      <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6 flex gap-3">
-                        <FiInfo className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                        <p className="text-sm text-blue-700">
-                          Your identity stays anonymous. Only <span className="font-bold text-blue-900">"Verified Resident"</span> is shown to others.
-                        </p>
-                      </div>
-                      <textarea
-                        id="description"
-                        name="description"
-                        value={formData.description}
-                        onChange={handleInputChange}
-                        rows={8}
-                        maxLength={2000}
-                        placeholder="What happened? When did it occur? Have you spoken to the owner? Be as detailed as possible to help other students."
-                        className="w-full p-6 bg-gray-50 border border-gray-200 rounded-3xl focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none text-gray-900"
-                        required
-                      />
-                      <div className="flex justify-between mt-2 text-xs font-bold uppercase tracking-wider">
-                        <span className="text-gray-400">Be objective and factual</span>
-                        <span className={formData.description.length > 1800 ? 'text-red-500' : 'text-gray-400'}>
-                          {formData.description.length}/2000
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Step 3: Evidence */}
-                {step === 3 && (
-                  <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-                    <div>
-                      <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <span className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-sm font-bold">4</span>
-                        Add Evidence
-                      </h3>
-                      <div className="bg-green-50 border border-green-100 p-4 rounded-xl mb-6 flex gap-3">
-                        <FiCamera className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                        <p className="text-sm text-green-700">
-                          <span className="font-bold text-green-900">📸 Photos increase report credibility by 3x.</span> Evidence helps owners resolve issues faster.
-                        </p>
-                      </div>
-                      
-                      <div className="bg-gray-50 p-8 rounded-3xl border-2 border-dashed border-gray-200">
-                        <ImageUpload 
-                          onImagesChange={setUploadedImages} 
-                          uploadedImages={uploadedImages}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Navigation Buttons */}
-                <div className="mt-auto pt-12 flex justify-between items-center">
-                  {step > 1 ? (
-                    <button
-                      onClick={() => setStep(step - 1)}
-                      className="px-6 py-3 border border-gray-200 text-gray-600 font-bold rounded-xl hover:bg-gray-50 transition-all flex items-center gap-2"
-                    >
-                      <FiArrowLeft /> Back
-                    </button>
-                  ) : <div></div>}
-
-                  {step < 3 ? (
-                    <button
-                      onClick={() => {
-                        if (step === 1 && !formData.accommodation) {
-                          alert("Please select an accommodation");
-                          return;
-                        }
-                        setStep(step + 1);
-                      }}
-                      className="px-8 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-200"
-                    >
-                      Next Step <FiArrowRight />
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleSubmit}
-                      disabled={isSubmitting}
-                      className="px-8 py-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-slate-900 font-bold rounded-xl hover:from-yellow-300 hover:to-orange-400 transition-all flex items-center gap-2 shadow-lg shadow-orange-200 disabled:opacity-50"
-                    >
-                      {isSubmitting ? (
-                        <span className="flex items-center gap-2">
-                          <svg className="animate-spin h-5 w-5 text-slate-900" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          Submitting...
-                        </span>
-                      ) : (
-                        <>Submit Report <FiArrowRight /></>
-                      )}
-                    </button>
-                  )}
-                </div>
-
+                      {n < 3 && <div className={`ri-step-line ${step > n ? 'ri-step-line-active' : ''}`} />}
+                    </React.Fragment>
+                  );
+                })}
               </div>
-            )}
+
+              {submitSuccess ? (
+                <div className="ri-success">
+                  <div className="ri-success-icon">✓</div>
+                  <h2 className="ri-success-title">Report Submitted!</h2>
+                  <p className="ri-success-sub">Moderators will review it shortly. Redirecting you…</p>
+                </div>
+              ) : (
+                <div className="ri-content">
+
+                  {/* Step 1 */}
+                  {step === 1 && (
+                    <div className="ri-step-content fade-up">
+                      <div className="field-group">
+                        <label className="field-label ri-step-heading">
+                          <span className="ri-step-num">1</span> Which property has the issue?
+                        </label>
+                        {accommodationsLoading ? (
+                          <div className="ri-skeleton" />
+                        ) : (
+                          <>
+                            <div style={{ position: 'relative', marginBottom: 10 }}>
+                              <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', opacity: 0.4, fontSize: 13 }}>🔍</span>
+                              <input type="text" className="ss-input" style={{ paddingLeft: 40 }}
+                                placeholder="Search by name, city, or address…"
+                                value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                            </div>
+                            <select name="accommodation" value={formData.accommodation} onChange={handleInputChange} className="ss-input" style={{ cursor: 'pointer' }}>
+                              <option value="">-- Choose Accommodation --</option>
+                              {(searchTerm ? filteredAccom : accommodations).map(acc => (
+                                <option key={acc._id} value={acc._id}>{acc.name} — {acc.address}, {acc.city}</option>
+                              ))}
+                            </select>
+                            {accommodations.length === 0 && (
+                              <div className="ss-error" style={{ marginTop: 10, fontSize: 12 }}>No accommodations registered yet. Tell owners to register!</div>
+                            )}
+                          </>
+                        )}
+                      </div>
+
+                      <div className="field-group">
+                        <label className="field-label ri-step-heading">
+                          <span className="ri-step-num">2</span> What kind of issue is it?
+                        </label>
+                        <div className="ri-categories">
+                          {CATEGORIES.map(cat => (
+                            <button key={cat.id} type="button"
+                              onClick={() => setFormData(p => ({ ...p, issueType: cat.id as any }))}
+                              className={`ri-cat-btn ${formData.issueType === cat.id ? 'ri-cat-active' : ''}`}
+                              style={{ ['--cat-color' as any]: cat.color }}>
+                              <span className="ri-cat-dot" style={{ background: cat.color }} />
+                              <span className="ri-cat-icon">{cat.icon}</span>
+                              <div>
+                                <p className="ri-cat-name">{cat.id}</p>
+                                <p className="ri-cat-desc">{cat.desc}</p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Step 2 */}
+                  {step === 2 && (
+                    <div className="ri-step-content fade-up">
+                      <div className="field-group">
+                        <label className="field-label ri-step-heading">
+                          <span className="ri-step-num">3</span> Describe what happened (be specific — it helps!)
+                        </label>
+                        <div className="ri-info-box">
+                          🔒 Your identity stays anonymous. Only <strong>"Verified Resident"</strong> is shown to others.
+                        </div>
+                        <div style={{ position: 'relative' }}>
+                          <textarea name="description" value={formData.description} onChange={handleInputChange}
+                            rows={8} maxLength={2000}
+                            className="ss-input ri-textarea"
+                            placeholder="What happened? When did it occur? Have you spoken to the owner? Be as detailed as possible." />
+                          <span className="ri-char-count">{formData.description.length}/2000</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Step 3 */}
+                  {step === 3 && (
+                    <div className="ri-step-content fade-up">
+                      <div className="field-group">
+                        <label className="field-label ri-step-heading">
+                          <span className="ri-step-num">4</span> Add Evidence (Optional but Recommended)
+                        </label>
+                        <div className="ri-info-box" style={{ background: 'rgba(16,185,129,0.08)', borderColor: 'rgba(16,185,129,0.25)', color: '#6ee7b7' }}>
+                          📸 Photos increase report credibility by 3x. Evidence helps owners resolve issues faster.
+                        </div>
+                        <div className="ri-upload-wrap">
+                          <ImageUpload onImagesChange={setUploadedImages} uploadedImages={uploadedImages} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Nav Buttons */}
+                  <div className="ri-nav">
+                    {step > 1 ? (
+                      <button onClick={() => setStep(step - 1)} className="ss-btn ss-btn-ghost">← Back</button>
+                    ) : (
+                      <div />
+                    )}
+
+                    {step < 3 ? (
+                      <button onClick={() => {
+                        if (step === 1 && !formData.accommodation) { alert('Please select an accommodation'); return; }
+                        setStep(step + 1);
+                      }} className="ss-btn">Next Step →</button>
+                    ) : (
+                      <button onClick={handleSubmit} disabled={isSubmitting} className="ss-btn ss-btn-rose">
+                        {isSubmitting ? <Spinner /> : null}
+                        {isSubmitting ? 'Submitting…' : '🚨 Submit Report →'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <p className="ri-footer fade-up fade-up-4">🔒 Reports are reviewed by admins before publishing. Your privacy is guaranteed.</p>
           </div>
         </div>
-      </div>
-    </div>
+      </OrbBackground>
+    </>
   );
 };
+
+const CSS = `
+  .ri-page {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 60px 24px 80px;
+  }
+  .ri-inner { width: 100%; max-width: 680px; }
+
+  /* Header */
+  .ri-header { margin-bottom: 36px; }
+  .ri-back-link { display: inline-block; font-size: 12px; font-weight: 600; color: var(--indigo); text-decoration: none; margin-bottom: 20px; transition: color 0.2s; }
+  .ri-back-link:hover { color: var(--violet); }
+
+  .ri-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 5px 13px; border-radius: 100px;
+    background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3);
+    font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em;
+    color: #fca5a5; margin-bottom: 18px;
+  }
+  .ri-pulse { width: 6px; height: 6px; border-radius: 50%; background: #ef4444; animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(1.5)} }
+
+  .ri-title {
+    font-size: clamp(2rem, 5vw, 2.8rem); font-weight: 700; letter-spacing: -0.04em;
+    color: var(--text-1); line-height: 1.1; margin-bottom: 12px;
+  }
+  .ri-title em { font-style: normal; color: #ef4444; }
+  .ri-sub { font-size: 14px; color: var(--text-2); line-height: 1.65; max-width: 500px; }
+
+  /* Card */
+  .ri-card { padding: 32px 36px; }
+
+  /* Steps */
+  .ri-steps { display: flex; align-items: center; margin-bottom: 32px; }
+  .ri-step { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .ri-step-circle {
+    width: 36px; height: 36px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700;
+    background: var(--panel); border: 1px solid var(--border); color: var(--text-3);
+    transition: all 0.3s;
+  }
+  .ri-step-active { background: rgba(99,102,241,0.15) !important; border-color: rgba(99,102,241,0.5) !important; color: #a5b4fc !important; }
+  .ri-step-done { background: rgba(16,185,129,0.15) !important; border-color: rgba(16,185,129,0.4) !important; color: var(--emerald) !important; }
+  .ri-step-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-3); }
+  .ri-step-label-active { color: #a5b4fc; }
+  .ri-step-line { flex: 1; height: 1px; background: var(--border); margin: 0 12px; transition: background 0.3s; margin-bottom: 22px; }
+  .ri-step-line-active { background: rgba(99,102,241,0.4); }
+
+  /* Content */
+  .ri-content { display: flex; flex-direction: column; min-height: 380px; }
+  .ri-step-content { flex: 1; }
+
+  .ri-step-heading { display: flex; align-items: center; gap: 10px; font-size: 14px; margin-bottom: 14px !important; color: var(--text-1) !important; text-transform: none !important; letter-spacing: 0 !important; }
+  .ri-step-num {
+    width: 26px; height: 26px; border-radius: 8px;
+    background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.25);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: #a5b4fc; flex-shrink: 0;
+  }
+
+  .ri-skeleton { height: 48px; background: var(--panel); border-radius: var(--r-sm); animation: shimmer 1.6s infinite; }
+
+  /* Categories */
+  .ri-categories { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media(max-width: 500px) { .ri-categories { grid-template-columns: 1fr; } }
+
+  .ri-cat-btn {
+    display: flex; align-items: flex-start; gap: 10px; padding: 14px 14px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--r-sm); cursor: pointer; transition: all 0.2s;
+    font-family: var(--font-body); text-align: left;
+  }
+  .ri-cat-btn:hover { border-color: rgba(99,102,241,0.3); transform: translateY(-1px); }
+  .ri-cat-active { border-color: var(--cat-color, var(--indigo)) !important; background: color-mix(in srgb, var(--cat-color, var(--indigo)) 10%, transparent) !important; }
+  .ri-cat-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-top: 6px; }
+  .ri-cat-icon { font-size: 18px; flex-shrink: 0; }
+  .ri-cat-name { font-size: 13px; font-weight: 600; color: var(--text-1); margin-bottom: 3px; }
+  .ri-cat-desc { font-size: 11px; color: var(--text-3); line-height: 1.4; }
+
+  /* Description */
+  .ri-info-box {
+    padding: 12px 14px; border-radius: var(--r-sm); margin-bottom: 14px;
+    background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2);
+    font-size: 12px; color: #a5b4fc; line-height: 1.55;
+  }
+  .ri-textarea { resize: none; min-height: 200px; }
+  .ri-char-count { position: absolute; bottom: 12px; right: 14px; font-size: 11px; color: var(--text-3); }
+
+  /* Upload */
+  .ri-upload-wrap { padding: 20px; background: var(--panel); border: 1px dashed var(--border); border-radius: var(--r-md); }
+
+  /* Nav */
+  .ri-nav { display: flex; justify-content: space-between; align-items: center; margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border); }
+
+  /* Success */
+  .ri-success { padding: 40px 24px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .ri-success-icon { width: 72px; height: 72px; border-radius: 50%; background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.3); display: flex; align-items: center; justify-content: center; font-size: 28px; color: var(--emerald); }
+  .ri-success-title { font-size: 1.6rem; font-weight: 700; color: var(--text-1); letter-spacing: -0.03em; }
+  .ri-success-sub { font-size: 13px; color: var(--text-2); }
+
+  /* Footer */
+  .ri-footer { text-align: center; margin-top: 20px; font-size: 12px; color: var(--text-3); }
+
+  .field-group { margin-bottom: 24px; }
+`;

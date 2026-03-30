@@ -1,949 +1,528 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { 
-  FiUser, FiMail, FiCalendar, FiShield, FiStar, FiAward, 
-  FiEdit2, FiLock, FiTrash2, FiArrowLeft, FiCheckCircle, FiInfo,
-  FiBell, FiChevronRight, FiCheck, FiX, FiFileText, FiThumbsUp,
-  FiAlertCircle, FiCamera, FiUpload, FiHome, FiTrendingUp, FiTool,
-  FiBarChart2, FiMapPin, FiPlus, FiAlertTriangle
-} from 'react-icons/fi';
+import { SubtleOrb, PageLoader, Spinner, useToast } from './DesignSystem';
 
 interface ProfileData {
-  _id: string;
-  name: string;
-  email: string;
-  role: string;
-  createdAt: string;
-  totalReports: number;
-  totalUpvotes: number;
-  resolvedReports?: number;
-  profilePhoto?: string;
-  // Owner-specific fields
-  totalProperties?: number;
-  avgTrustScore?: number;
-  totalReportsOnProperties?: number;
-  resolutionRate?: number;
+  _id: string; name: string; email: string; role: string; createdAt: string;
+  totalReports: number; totalUpvotes: number; resolvedReports?: number; profilePhoto?: string;
+  totalProperties?: number; avgTrustScore?: number; totalReportsOnProperties?: number; resolutionRate?: number;
 }
-
-interface NotificationPreferences {
-  securityAlerts: boolean;
-  responseUpdates: boolean;
-  platformNews: boolean;
-}
+interface NotificationPreferences { securityAlerts: boolean; responseUpdates: boolean; platformNews: boolean; }
 
 export default function Profile() {
   const { user } = useAuth();
-  const [profile, setProfile] = useState<ProfileData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [showNotifications, setShowNotifications] = useState(false);
+  const toast    = useToast();
+  const [profile, setProfile]   = useState<ProfileData | null>(null);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState('');
 
-  const [editingName, setEditingName] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [nameLoading, setNameLoading] = useState(false);
+  const [editingName, setEditingName]   = useState(false);
+  const [newName, setNewName]           = useState('');
+  const [nameLoading, setNameLoading]   = useState(false);
 
   const [showPasswordForm, setShowPasswordForm] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [passwordLoading, setPasswordLoading] = useState(false);
-  const [passwordMessage, setPasswordMessage] = useState('');
+  const [currentPassword, setCurrentPassword]   = useState('');
+  const [newPassword, setNewPassword]           = useState('');
+  const [confirmPassword, setConfirmPassword]   = useState('');
+  const [passwordLoading, setPasswordLoading]   = useState(false);
+  const [passwordMessage, setPasswordMessage]   = useState('');
 
-  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>({
-    securityAlerts: true,
-    responseUpdates: true,
-    platformNews: false
-  });
+  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>({ securityAlerts: true, responseUpdates: true, platformNews: false });
   const [savingPrefs, setSavingPrefs] = useState(false);
-  const [prefsMessage, setPrefsMessage] = useState('');
 
-  const [showPhotoModal, setShowPhotoModal] = useState(false);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [showPhotoModal, setShowPhotoModal]   = useState(false);
+  const [uploadingPhoto, setUploadingPhoto]   = useState(false);
+  const [photoPreview, setPhotoPreview]       = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const navigate = useNavigate();
-  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  const navigate     = useNavigate();
+  const API          = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  const isOwner      = user?.role === 'owner';
+  const accentColor  = isOwner ? 'var(--emerald)' : 'var(--indigo)';
 
-  // ✅ Determine if user is owner
-  const isOwner = user?.role === 'owner';
-
-  useEffect(() => {
-    fetchProfile();
-  }, []);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.notification-container')) {
-        setShowNotifications(false);
-      }
-    };
-    
-    if (showNotifications) {
-      document.addEventListener('click', handleClickOutside);
-    }
-    
-    return () => {
-      document.removeEventListener('click', handleClickOutside);
-    };
-  }, [showNotifications]);
+  useEffect(() => { fetchProfile(); }, []);
 
   const fetchProfile = async () => {
     const token = localStorage.getItem('token');
-    if (!token) {
-      navigate('/login');
-      return;
-    }
-
+    if (!token) { navigate('/login'); return; }
     try {
-      const response = await fetch(`${API}/api/profile`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      const data = await response.json();
+      const res  = await fetch(`${API}/api/profile`, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } });
+      const data = await res.json();
       if (data.success) {
         setProfile(data.data);
         setNewName(data.data.name);
-        if (data.data.notificationPrefs) {
-          setNotificationPrefs(data.data.notificationPrefs);
-        }
-      } else {
-        setError(data.message || 'Failed to load profile');
-      }
-    } catch {
-      setError('Error connecting to server');
-    } finally {
-      setLoading(false);
-    }
+        if (data.data.notificationPrefs) setNotificationPrefs(data.data.notificationPrefs);
+      } else { setError(data.message || 'Failed to load profile'); }
+    } catch { setError('Error connecting to server'); }
+    finally { setLoading(false); }
   };
 
   const handleNameUpdate = async () => {
-    if (!newName.trim() || newName.trim() === profile?.name) {
-      setEditingName(false);
-      return;
-    }
-    const token = localStorage.getItem('token');
-    setNameLoading(true);
+    if (!newName.trim() || newName.trim() === profile?.name) { setEditingName(false); return; }
+    const token = localStorage.getItem('token'); setNameLoading(true);
     try {
-      const response = await fetch(`${API}/api/profile`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ name: newName.trim() })
-      });
-      const data = await response.json();
+      const res  = await fetch(`${API}/api/profile`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName.trim() }) });
+      const data = await res.json();
       if (data.success) {
-        setProfile(prev => prev ? { ...prev, name: data.data.name } : null);
+        setProfile(p => p ? { ...p, name: data.data.name } : null);
         setEditingName(false);
-      } else {
-        alert(data.message || 'Failed to update name');
-      }
-    } catch {
-      alert('Error updating name');
-    } finally {
-      setNameLoading(false);
-    }
+        toast.success('Name updated successfully!');
+      } else { toast.error(data.message || 'Failed to update name'); }
+    } catch { toast.error('Error updating name'); }
+    finally { setNameLoading(false); }
   };
 
   const handlePasswordChange = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPasswordMessage('');
-    if (newPassword !== confirmPassword) {
-      setPasswordMessage('New passwords do not match');
-      return;
-    }
-    if (newPassword.length < 6) {
-      setPasswordMessage('Password must be at least 6 characters');
-      return;
-    }
-    const token = localStorage.getItem('token');
-    setPasswordLoading(true);
+    e.preventDefault(); setPasswordMessage('');
+    if (newPassword !== confirmPassword) { setPasswordMessage('mismatch'); return; }
+    if (newPassword.length < 6) { setPasswordMessage('short'); return; }
+    const token = localStorage.getItem('token'); setPasswordLoading(true);
     try {
-      const response = await fetch(`${API}/api/profile/password`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ currentPassword, newPassword })
-      });
-      const data = await response.json();
+      const res  = await fetch(`${API}/api/profile/password`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ currentPassword, newPassword }) });
+      const data = await res.json();
       if (data.success) {
-        setPasswordMessage('Password changed successfully!');
-        setCurrentPassword('');
-        setNewPassword('');
-        setConfirmPassword('');
-        setTimeout(() => {
-          setShowPasswordForm(false);
-          setPasswordMessage('');
-        }, 2000);
+        toast.success('Password changed successfully!');
+        setCurrentPassword(''); setNewPassword(''); setConfirmPassword('');
+        setTimeout(() => { setShowPasswordForm(false); setPasswordMessage(''); }, 500);
       } else {
-        setPasswordMessage(data.message || 'Failed to change password');
+        setPasswordMessage(data.message || 'Failed');
+        toast.error(data.message || 'Failed to change password');
       }
-    } catch {
-      setPasswordMessage('Error changing password');
-    } finally {
-      setPasswordLoading(false);
-    }
+    } catch { toast.error('Error changing password'); }
+    finally { setPasswordLoading(false); }
   };
 
   const handleNotificationToggle = async (key: keyof NotificationPreferences) => {
-    const newPrefs = {
-      ...notificationPrefs,
-      [key]: !notificationPrefs[key]
-    };
-    
-    setNotificationPrefs(newPrefs);
-    setSavingPrefs(true);
-    setPrefsMessage('');
-
+    const newPrefs = { ...notificationPrefs, [key]: !notificationPrefs[key] };
+    setNotificationPrefs(newPrefs); setSavingPrefs(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API}/api/profile/notifications`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ notificationPrefs: newPrefs })
-      });
-      
-      const data = await response.json();
-      if (data.success) {
-        setPrefsMessage('Saved!');
-        setTimeout(() => setPrefsMessage(''), 2000);
-      }
-    } catch {
-      setPrefsMessage('Saved locally');
-      setTimeout(() => setPrefsMessage(''), 2000);
-    } finally {
-      setSavingPrefs(false);
-    }
-  };
-
-  const handlePhotoEditClick = () => {
-    setShowPhotoModal(true);
+      await fetch(`${API}/api/profile/notifications`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ notificationPrefs: newPrefs }) });
+      toast.success('Preferences saved');
+    } catch { toast.info('Saved locally'); }
+    finally { setSavingPrefs(false); }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (!file.type.startsWith('image/')) {
-        alert('Please select an image file');
-        return;
-      }
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Image size should be less than 5MB');
-        return;
-      }
-      
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Please select an image file'); return; }
+    if (file.size > 5 * 1024 * 1024)    { toast.error('Image must be under 5MB'); return; }
+    const r = new FileReader(); r.onloadend = () => setPhotoPreview(r.result as string); r.readAsDataURL(file);
   };
 
   const handlePhotoUpload = async () => {
-    if (!photoPreview || !fileInputRef.current?.files?.[0]) {
-      alert('Please select an image first');
-      return;
-    }
-
+    if (!photoPreview || !fileInputRef.current?.files?.[0]) { toast.error('Please select an image first'); return; }
     setUploadingPhoto(true);
-    
     try {
       const token = localStorage.getItem('token');
-      const formData = new FormData();
-      formData.append('image', fileInputRef.current.files[0]);
-
-      const response = await fetch(`${API}/api/upload`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData
-      });
-
-      const data = await response.json();
-      
-      if (data.success && data.urls && data.urls.length > 0) {
-        const updateResponse = await fetch(`${API}/api/profile`, {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ profilePhoto: data.urls[0] })
-        });
-
-        const updateData = await updateResponse.json();
-        if (updateData.success) {
-          setProfile(prev => prev ? { ...prev, profilePhoto: data.urls[0] } : null);
-          setShowPhotoModal(false);
-          setPhotoPreview(null);
-          alert('Profile photo updated successfully!');
+      const fd    = new FormData(); fd.append('image', fileInputRef.current.files[0]);
+      const upRes  = await fetch(`${API}/api/upload`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
+      const upData = await upRes.json();
+      if (upData.success && upData.urls?.length > 0) {
+        const updRes  = await fetch(`${API}/api/profile`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ profilePhoto: upData.urls[0] }) });
+        const updData = await updRes.json();
+        if (updData.success) {
+          setProfile(p => p ? { ...p, profilePhoto: upData.urls[0] } : null);
+          setShowPhotoModal(false); setPhotoPreview(null);
+          toast.success('Profile photo updated!');
         }
-      } else {
-        alert('Failed to upload image. Please try again.');
-      }
-    } catch (err) {
-      console.error('Upload error:', err);
-      alert('Error uploading image. Please try again.');
-    } finally {
-      setUploadingPhoto(false);
-    }
+      } else { toast.error('Failed to upload image'); }
+    } catch { toast.error('Error uploading image'); }
+    finally { setUploadingPhoto(false); }
   };
 
   const handleRemovePhoto = async () => {
-    if (!confirm('Are you sure you want to remove your profile photo?')) return;
-
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API}/api/profile`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ profilePhoto: null })
-      });
-
-      const data = await response.json();
+      const res   = await fetch(`${API}/api/profile`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ profilePhoto: null }) });
+      const data  = await res.json();
       if (data.success) {
-        setProfile(prev => prev ? { ...prev, profilePhoto: undefined } : null);
+        setProfile(p => p ? { ...p, profilePhoto: undefined } : null);
         setShowPhotoModal(false);
-        alert('Profile photo removed');
+        toast.success('Profile photo removed');
       }
-    } catch {
-      alert('Error removing photo');
-    }
+    } catch { toast.error('Error removing photo'); }
   };
 
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="flex flex-col items-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-        <p className="text-gray-600 font-medium">Loading your profile...</p>
-      </div>
-    </div>
-  );
+  if (loading) return <PageLoader />;
 
-  if (error) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl text-center">
-        <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-          <FiInfo className="h-8 w-8 text-red-600" />
-        </div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">{error}</h2>
-        <p className="text-gray-600 mb-6">We couldn't load your profile. Please try again.</p>
-        <button 
-          onClick={fetchProfile}
-          className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors"
-        >
-          Retry
-        </button>
-      </div>
-    </div>
-  );
+  const STATS = isOwner ? [
+    { label: 'Properties',     value: profile?.totalProperties || 0,         icon: '🏠', color: 'var(--emerald)' },
+    { label: 'Avg Score',      value: `${profile?.avgTrustScore || 0}%`,      icon: '⭐', color: 'var(--indigo)'  },
+    { label: 'Reports',        value: profile?.totalReportsOnProperties || 0, icon: '📄', color: 'var(--amber)'   },
+    { label: 'Resolution %',   value: `${profile?.resolutionRate || 0}%`,     icon: '✅', color: 'var(--emerald)' },
+  ] : [
+    { label: 'Reports Filed',  value: profile?.totalReports || 0,     icon: '📄', color: 'var(--indigo)'  },
+    { label: 'Confirmations',  value: profile?.totalUpvotes || 0,     icon: '👍', color: 'var(--violet)'  },
+    { label: 'Issues Resolved',value: profile?.resolvedReports || 0,  icon: '✅', color: 'var(--emerald)' },
+  ];
+
+  const NOTIF_PREFS = [
+    { key: 'securityAlerts' as const, label: isOwner ? 'New Reports'     : 'Security Alerts',  sub: isOwner ? 'When students file reports on your properties' : 'Critical safety reports in your area' },
+    { key: 'responseUpdates' as const,label: 'Response Updates', sub: isOwner ? 'Student verification of your resolutions' : 'When owners reply to your reports' },
+    { key: 'platformNews' as const,   label: 'Platform News',   sub: 'New features and safety guides' },
+  ];
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
-      {/* Header - DYNAMIC GRADIENT BASED ON ROLE */}
-      <div className={`pt-16 pb-32 ${isOwner ? 'bg-gradient-to-br from-emerald-900 via-teal-900 to-green-900' : 'bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900'}`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Top Navigation */}
-          <div className="flex items-center justify-between mb-10">
-            <Link 
-              to={isOwner ? "/owner/dashboard" : "/dashboard"} 
-              className={`inline-flex items-center ${isOwner ? 'text-emerald-300 hover:text-white' : 'text-blue-300 hover:text-white'} font-bold transition-all gap-2`}
-            >
-              <FiArrowLeft /> Back to Dashboard
-            </Link>
-            
-            {/* Notification Bell */}
-            <div className="relative notification-container">
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowNotifications(!showNotifications);
-                }}
-                className="p-3 bg-white/10 hover:bg-white/20 rounded-xl transition-colors relative"
-              >
-                <FiBell className="h-6 w-6 text-white" />
-                <span className={`absolute top-2 right-2 w-3 h-3 ${isOwner ? 'bg-emerald-500' : 'bg-red-500'} rounded-full border-2 ${isOwner ? 'border-emerald-900' : 'border-slate-900'} animate-pulse`}></span>
-              </button>
-              
-              {/* Notifications Dropdown - DIFFERENT FOR OWNER */}
-              {showNotifications && (
-                <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50">
-                  <div className="p-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
-                    <h3 className="font-bold text-gray-900">Notifications</h3>
-                    <span className={`text-xs ${isOwner ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'} px-2 py-1 rounded-full font-semibold`}>
-                      {isOwner ? '2 New' : '3 New'}
+    <>
+      <style>{CSS}</style>
+      <SubtleOrb>
+        <div className="pf-page">
+          {/* Header */}
+          <header className="pf-header fade-up">
+            <div className="pf-header-inner">
+              <Link to={isOwner ? '/owner/dashboard' : '/dashboard'} className="pf-back-link">← Back to Dashboard</Link>
+
+              <div className="pf-hero-row">
+                {/* Avatar */}
+                <div className="pf-avatar-wrap">
+                  <div className="pf-avatar" style={{ background: isOwner ? 'linear-gradient(135deg,#059669,#10b981)' : 'linear-gradient(135deg,var(--indigo),var(--violet))' }}>
+                    {profile?.profilePhoto
+                      ? <img src={profile.profilePhoto} alt={profile?.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : profile?.name.charAt(0).toUpperCase()
+                    }
+                  </div>
+                  <button onClick={() => setShowPhotoModal(true)} className="pf-avatar-edit" title="Edit photo">📷</button>
+                </div>
+
+                <div>
+                  <div className="pf-name-row">
+                    <h1 className="pf-name">{profile?.name}</h1>
+                    <span className="pill" style={{ borderColor: `${accentColor === 'var(--emerald)' ? 'rgba(16,185,129,0.4)' : 'rgba(99,102,241,0.4)'}`, color: accentColor, marginTop: 4 }}>
+                      {isOwner ? '🏢 Property Owner' : '🎓 Student'}
                     </span>
                   </div>
-                  <div className="max-h-80 overflow-y-auto">
-                    {isOwner ? (
-                      /* ========== OWNER NOTIFICATIONS ========== */
-                      <>
-                        <div className="p-4 hover:bg-gray-50 border-b border-gray-50 cursor-pointer transition-colors">
-                          <div className="flex items-start gap-3">
-                            <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center flex-shrink-0">
-                              <FiAlertTriangle className="text-yellow-600" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">New Report Filed</p>
-                              <p className="text-xs text-gray-500 mt-0.5">Water quality issue at Sunshine PG</p>
-                              <p className="text-xs text-gray-400 mt-1">1 hour ago</p>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="p-4 hover:bg-gray-50 cursor-pointer transition-colors">
-                          <div className="flex items-start gap-3">
-                            <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
-                              <FiCheckCircle className="text-green-600" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">Resolution Verified</p>
-                              <p className="text-xs text-gray-500 mt-0.5">Student confirmed your fix was effective</p>
-                              <p className="text-xs text-gray-400 mt-1">3 hours ago</p>
-                            </div>
-                          </div>
-                        </div>
-                      </>
+                  <p className="pf-email">✉️ {profile?.email}</p>
+                  <div className="pf-since">
+                    📅 Member since {profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : '—'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Stats bar */}
+            <div className="pf-stats" style={{ ['--accent-color' as any]: accentColor }}>
+              {STATS.map((s, i) => (
+                <div key={i} className="pf-stat fade-up" style={{ animationDelay: `${0.06 + i * 0.06}s` }}>
+                  <span className="pf-stat-icon">{s.icon}</span>
+                  <span className="pf-stat-num" style={{ color: s.color }}>{s.value}</span>
+                  <span className="pf-stat-label">{s.label}</span>
+                </div>
+              ))}
+            </div>
+          </header>
+
+          <div className="pf-body">
+            {error && <div className="ss-error fade-up" style={{ marginBottom: 20 }}>{error}</div>}
+
+            <div className="pf-grid">
+              {/* Left column */}
+              <div className="pf-col">
+                {/* Edit Name */}
+                <div className="pf-card glass fade-up fade-up-2">
+                  <h3 className="pf-card-title">Personal Information</h3>
+                  <div className="pf-field-row">
+                    <label className="field-label" style={{ marginBottom: 0 }}>Full Name</label>
+                    {editingName ? (
+                      <div className="pf-edit-row">
+                        <input className="ss-input pf-edit-input" value={newName}
+                          onChange={e => setNewName(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') handleNameUpdate(); if (e.key === 'Escape') setEditingName(false); }}
+                          autoFocus />
+                        <button onClick={handleNameUpdate} disabled={nameLoading} className="ss-btn" style={{ padding: '10px 14px', fontSize: 12 }}>
+                          {nameLoading ? <Spinner size={12} /> : 'Save'}
+                        </button>
+                        <button onClick={() => setEditingName(false)} className="ss-btn ss-btn-ghost" style={{ padding: '10px 14px', fontSize: 12 }}>✕</button>
+                      </div>
                     ) : (
-                      /* ========== STUDENT NOTIFICATIONS ========== */
-                      <>
-                        <div className="p-4 hover:bg-gray-50 border-b border-gray-50 cursor-pointer transition-colors">
-                          <div className="flex items-start gap-3">
-                            <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
-                              <FiCheckCircle className="text-green-600" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">Report Approved</p>
-                              <p className="text-xs text-gray-500 mt-0.5">Your water quality report was verified</p>
-                              <p className="text-xs text-gray-400 mt-1">2 hours ago</p>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="p-4 hover:bg-gray-50 border-b border-gray-50 cursor-pointer transition-colors">
-                          <div className="flex items-start gap-3">
-                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                              <FiThumbsUp className="text-blue-600" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">New Confirmation</p>
-                              <p className="text-xs text-gray-500 mt-0.5">Someone confirmed your safety report</p>
-                              <p className="text-xs text-gray-400 mt-1">5 hours ago</p>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="p-4 hover:bg-gray-50 cursor-pointer transition-colors">
-                          <div className="flex items-start gap-3">
-                            <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center flex-shrink-0">
-                              <FiAlertCircle className="text-yellow-600" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">Safety Alert</p>
-                              <p className="text-xs text-gray-500 mt-0.5">New report filed in your area</p>
-                              <p className="text-xs text-gray-400 mt-1">1 day ago</p>
-                            </div>
-                          </div>
-                        </div>
-                      </>
+                      <div className="pf-field-value-row">
+                        <span className="pf-field-value">{profile?.name}</span>
+                        <button onClick={() => setEditingName(true)} className="pf-edit-link">Edit</button>
+                      </div>
                     )}
                   </div>
-                  <div className="p-3 bg-gray-50 border-t border-gray-100">
-                    <button className={`w-full text-center text-sm font-semibold ${isOwner ? 'text-emerald-600 hover:text-emerald-700' : 'text-blue-600 hover:text-blue-700'} transition-colors`}>
-                      View All Notifications
-                    </button>
+                  <div className="pf-divider" />
+                  <div className="pf-field-row">
+                    <label className="field-label" style={{ marginBottom: 0 }}>Email</label>
+                    <span className="pf-field-value" style={{ fontSize: 13 }}>{profile?.email}</span>
+                  </div>
+                  <div className="pf-divider" />
+                  <div className="pf-field-row">
+                    <label className="field-label" style={{ marginBottom: 0 }}>Role</label>
+                    <span className="pf-field-value" style={{ fontSize: 13, textTransform: 'capitalize' }}>{profile?.role}</span>
                   </div>
                 </div>
-              )}
-            </div>
-          </div>
-          
-          <div className="flex flex-col md:flex-row items-center gap-8">
-            {/* Profile Photo */}
-            <div className="relative">
-              <div className={`w-24 h-24 sm:w-32 sm:h-32 rounded-[2rem] ${isOwner ? 'bg-gradient-to-br from-emerald-500 to-teal-600' : 'bg-gradient-to-br from-blue-500 to-indigo-600'} flex items-center justify-center text-4xl sm:text-5xl font-black text-white shadow-2xl ${isOwner ? 'shadow-emerald-900/50' : 'shadow-blue-900/50'} border-4 border-white/10 overflow-hidden`}>
-                {profile?.profilePhoto ? (
-                  <img 
-                    src={profile.profilePhoto} 
-                    alt={profile.name} 
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  profile?.name.charAt(0).toUpperCase()
-                )}
-              </div>
-              <button 
-                onClick={handlePhotoEditClick}
-                className="absolute bottom-0 right-0 p-2.5 bg-white text-slate-900 rounded-xl shadow-lg hover:bg-blue-50 hover:text-blue-600 transition-all border border-gray-100 group"
-                title="Edit profile photo"
-              >
-                <FiCamera className="h-4 w-4 group-hover:scale-110 transition-transform" />
-              </button>
-            </div>
-            
-            <div className="text-center md:text-left">
-              <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-3">
-                <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
-                  {profile?.name}
-                </h1>
-                <span className={`${isOwner ? 'bg-emerald-600/30 border-emerald-400/30 text-emerald-200' : 'bg-blue-600/30 border-blue-400/30 text-blue-200'} backdrop-blur-md border px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest flex items-center gap-1`}>
-                  <FiShield className="h-3 w-3" />
-                  {isOwner ? 'Property Owner' : profile?.role}
-                </span>
-              </div>
-              <p className={`${isOwner ? 'text-emerald-200' : 'text-blue-200'} text-lg flex items-center justify-center md:justify-start gap-2 font-medium`}>
-                <FiMail className={isOwner ? 'text-emerald-400' : 'text-blue-400'} /> {profile?.email}
-              </p>
-              <div className="mt-6 flex flex-wrap justify-center md:justify-start gap-4">
-                <div className="bg-white/5 backdrop-blur-md border border-white/10 px-4 py-2 rounded-xl flex items-center gap-2">
-                  <FiCalendar className={isOwner ? 'text-emerald-400' : 'text-blue-400'} />
-                  <span className="text-xs font-bold text-white uppercase tracking-widest">
-                    Member since {profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : '2024'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {/* Photo Edit Modal */}
-      {showPhotoModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
-            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-xl font-bold text-gray-900">Update Profile Photo</h3>
-              <button 
-                onClick={() => {
-                  setShowPhotoModal(false);
-                  setPhotoPreview(null);
-                }}
-                className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
-              >
-                <FiX className="h-5 w-5 text-gray-500" />
-              </button>
-            </div>
-            
-            <div className="p-6">
-              <div className="flex justify-center mb-6">
-                <div className={`w-32 h-32 rounded-2xl ${isOwner ? 'bg-gradient-to-br from-emerald-500 to-teal-600' : 'bg-gradient-to-br from-blue-500 to-indigo-600'} flex items-center justify-center text-5xl font-black text-white overflow-hidden border-4 border-gray-100 shadow-lg`}>
-                  {photoPreview ? (
-                    <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
-                  ) : profile?.profilePhoto ? (
-                    <img src={profile.profilePhoto} alt={profile.name} className="w-full h-full object-cover" />
-                  ) : (
-                    profile?.name.charAt(0).toUpperCase()
+                {/* Change Password */}
+                <div className="pf-card glass fade-up fade-up-3">
+                  <div className="pf-card-header">
+                    <h3 className="pf-card-title">Security</h3>
+                    <button onClick={() => setShowPasswordForm(!showPasswordForm)} className="pf-toggle-btn" style={{ color: accentColor }}>
+                      {showPasswordForm ? 'Cancel' : 'Change Password'}
+                    </button>
+                  </div>
+
+                  {!showPasswordForm && (
+                    <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 8 }}>
+                      🔒 Your password is securely encrypted
+                    </p>
+                  )}
+
+                  {showPasswordForm && (
+                    <form onSubmit={handlePasswordChange} style={{ marginTop: 16 }}>
+                      {passwordMessage === 'mismatch' && <div className="ss-error" style={{ marginBottom: 14 }}>Passwords do not match</div>}
+                      {passwordMessage === 'short'    && <div className="ss-error" style={{ marginBottom: 14 }}>Min 6 characters</div>}
+
+                      <div className="field-group">
+                        <label className="field-label">Current Password</label>
+                        <input type="password" className="ss-input" placeholder="••••••••"
+                          value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required />
+                      </div>
+                      <div className="field-group">
+                        <label className="field-label">New Password</label>
+                        <input type="password" className="ss-input" placeholder="Min. 6 characters"
+                          value={newPassword} onChange={e => setNewPassword(e.target.value)} required minLength={6} />
+                      </div>
+                      <div className="field-group">
+                        <label className="field-label">Confirm New Password</label>
+                        <input type="password" className="ss-input" placeholder="Repeat new password"
+                          value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required
+                          style={confirmPassword && newPassword !== confirmPassword ? { borderColor: 'rgba(244,63,94,0.5)' } : {}} />
+                      </div>
+                      <button type="submit" disabled={passwordLoading} className="ss-btn ss-btn-full" style={{ fontSize: 13 }}>
+                        {passwordLoading ? <Spinner size={14} /> : null}
+                        {passwordLoading ? 'Updating…' : 'Update Password →'}
+                      </button>
+                    </form>
                   )}
                 </div>
               </div>
 
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleFileSelect}
-                className="hidden"
-              />
+              {/* Right column */}
+              <div className="pf-col">
+                {/* Notifications */}
+                <div className="pf-card glass fade-up fade-up-2">
+                  <div className="pf-card-header">
+                    <h3 className="pf-card-title">Notification Preferences</h3>
+                    {savingPrefs && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Saving…</span>}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 16 }}>
+                    {NOTIF_PREFS.map((pref, i) => (
+                      <div key={pref.key}>
+                        <div className="pf-notif-row">
+                          <div>
+                            <p className="pf-notif-label">{pref.label}</p>
+                            <p className="pf-notif-sub">{pref.sub}</p>
+                          </div>
+                          <button
+                            className={`pf-toggle ${notificationPrefs[pref.key] ? 'pf-toggle-on' : ''}`}
+                            style={notificationPrefs[pref.key] ? { background: accentColor } : {}}
+                            onClick={() => handleNotificationToggle(pref.key)}
+                          >
+                            <span className="pf-toggle-thumb" />
+                          </button>
+                        </div>
+                        {i < NOTIF_PREFS.length - 1 && <div className="pf-divider" />}
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
-              <div 
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-all group"
-              >
-                <FiUpload className="h-8 w-8 text-gray-400 mx-auto mb-3 group-hover:text-blue-500 transition-colors" />
-                <p className="text-sm font-semibold text-gray-700">Click to upload a photo</p>
-                <p className="text-xs text-gray-500 mt-1">PNG, JPG up to 5MB</p>
-              </div>
-
-              <div className="flex gap-3 mt-6">
-                {photoPreview && (
-                  <button
-                    onClick={handlePhotoUpload}
-                    disabled={uploadingPhoto}
-                    className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {uploadingPhoto ? (
+                {/* Quick actions */}
+                <div className="pf-card glass fade-up fade-up-3">
+                  <h3 className="pf-card-title" style={{ marginBottom: 16 }}>Quick Actions</h3>
+                  <div className="pf-actions-grid">
+                    {isOwner ? (
                       <>
-                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                        Uploading...
+                        <Link to="/owner/add-property" className="pf-action-btn" style={{ textDecoration: 'none' }}>
+                          <span className="pf-action-icon">➕</span>
+                          <span>Add Property</span>
+                        </Link>
+                        <Link to="/accommodations" className="pf-action-btn" style={{ textDecoration: 'none' }}>
+                          <span className="pf-action-icon">🗺️</span>
+                          <span>Browse Map</span>
+                        </Link>
                       </>
                     ) : (
                       <>
-                        <FiCheck /> Save Photo
+                        <Link to="/report" className="pf-action-btn" style={{ textDecoration: 'none' }}>
+                          <span className="pf-action-icon">⚠️</span>
+                          <span>Report Issue</span>
+                        </Link>
+                        <Link to="/my-reports" className="pf-action-btn" style={{ textDecoration: 'none' }}>
+                          <span className="pf-action-icon">📋</span>
+                          <span>My Reports</span>
+                        </Link>
+                        <Link to="/accommodations" className="pf-action-btn" style={{ textDecoration: 'none' }}>
+                          <span className="pf-action-icon">🏠</span>
+                          <span>Browse</span>
+                        </Link>
+                        <Link to="/dashboard" className="pf-action-btn" style={{ textDecoration: 'none' }}>
+                          <span className="pf-action-icon">⚡</span>
+                          <span>Dashboard</span>
+                        </Link>
                       </>
                     )}
-                  </button>
-                )}
-                
-                {profile?.profilePhoto && !photoPreview && (
-                  <button
-                    onClick={handleRemovePhoto}
-                    className="flex-1 py-3 bg-red-50 text-red-600 rounded-xl font-bold hover:bg-red-100 transition-colors flex items-center justify-center gap-2"
-                  >
-                    <FiTrash2 /> Remove Photo
-                  </button>
-                )}
-                
-                <button
-                  onClick={() => {
-                    setShowPhotoModal(false);
-                    setPhotoPreview(null);
-                  }}
-                  className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors"
-                >
-                  Cancel
-                </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      )}
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-16">
-        {/* ========== ROLE-BASED STATS GRID ========== */}
-        {isOwner ? (
-          /* ========== OWNER STATS ========== */
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
-            {[
-              { label: 'Properties Managed', value: profile?.totalProperties || 0, icon: <FiHome />, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-              { label: 'Avg Trust Score', value: profile?.avgTrustScore || 0, icon: <FiTrendingUp />, color: 'text-blue-600', bg: 'bg-blue-50' },
-              { label: 'Total Reports', value: profile?.totalReportsOnProperties || 0, icon: <FiFileText />, color: 'text-yellow-600', bg: 'bg-yellow-50' },
-              { label: 'Resolution Rate', value: `${profile?.resolutionRate || 0}%`, icon: <FiCheckCircle />, color: 'text-green-600', bg: 'bg-green-50' }
-            ].map((stat, i) => (
-              <div key={i} className="bg-white rounded-2xl shadow-lg p-8 border border-gray-100 flex items-center gap-6 transition-all hover:scale-[1.02] hover:shadow-xl">
-                <div className={`w-16 h-16 ${stat.bg} ${stat.color} rounded-2xl flex items-center justify-center text-3xl flex-shrink-0`}>
-                  {stat.icon}
-                </div>
-                <div>
-                  <p className="text-3xl font-black text-slate-900">{stat.value}</p>
-                  <p className="text-xs font-black text-gray-400 uppercase tracking-widest mt-1">{stat.label}</p>
-                </div>
+        {/* Photo Modal */}
+        {showPhotoModal && (
+          <div className="pf-modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowPhotoModal(false); }}>
+            <div className="pf-modal glass-hi fade-up">
+              <div className="pf-modal-header">
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-1)' }}>Profile Photo</h3>
+                <button onClick={() => setShowPhotoModal(false)} className="pf-modal-close">✕</button>
               </div>
-            ))}
-          </div>
-        ) : (
-          /* ========== STUDENT STATS ========== */
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-            {[
-              { label: 'Reports Filed', value: profile?.totalReports || 0, icon: <FiFileText />, color: 'text-blue-600', bg: 'bg-blue-50' },
-              { label: 'Confirmations Received', value: profile?.totalUpvotes || 0, icon: <FiAward />, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-              { label: 'Issues Resolved', value: profile?.resolvedReports || 0, icon: <FiCheckCircle />, color: 'text-green-600', bg: 'bg-green-50' }
-            ].map((stat, i) => (
-              <div key={i} className="bg-white rounded-2xl shadow-lg p-8 border border-gray-100 flex items-center gap-6 transition-all hover:scale-[1.02] hover:shadow-xl">
-                <div className={`w-16 h-16 ${stat.bg} ${stat.color} rounded-2xl flex items-center justify-center text-3xl flex-shrink-0`}>
-                  {stat.icon}
-                </div>
-                <div>
-                  <p className="text-3xl font-black text-slate-900">{stat.value}</p>
-                  <p className="text-xs font-black text-gray-400 uppercase tracking-widest mt-1">{stat.label}</p>
-                </div>
+
+              <div className="pf-photo-preview">
+                {photoPreview ? (
+                  <img src={photoPreview} alt="Preview" className="pf-photo-img" />
+                ) : profile?.profilePhoto ? (
+                  <img src={profile.profilePhoto} alt="Current" className="pf-photo-img" />
+                ) : (
+                  <div className="pf-photo-placeholder">
+                    {profile?.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
               </div>
-            ))}
+
+              <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileSelect} />
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 20 }}>
+                <button onClick={() => fileInputRef.current?.click()} className="ss-btn ss-btn-ghost ss-btn-full" style={{ fontSize: 13 }}>
+                  {photoPreview ? '↺ Choose Different Photo' : '📷 Choose Photo'}
+                </button>
+
+                {photoPreview && (
+                  <button onClick={handlePhotoUpload} disabled={uploadingPhoto} className="ss-btn ss-btn-full" style={{ fontSize: 13 }}>
+                    {uploadingPhoto ? <Spinner size={14} /> : null}
+                    {uploadingPhoto ? 'Uploading…' : 'Save Photo →'}
+                  </button>
+                )}
+
+                {profile?.profilePhoto && !photoPreview && (
+                  <button onClick={handleRemovePhoto} className="ss-btn ss-btn-ghost ss-btn-full" style={{ fontSize: 13, color: '#fda4af', borderColor: 'rgba(244,63,94,0.3)' }}>
+                    🗑 Remove Photo
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Settings Sections */}
-          <div className="lg:col-span-2 space-y-8">
-            
-            {/* Personal Information */}
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-              <div className="p-8 border-b border-gray-50 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`p-2.5 ${isOwner ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'} rounded-xl`}>
-                    <FiUser className="h-5 w-5" />
-                  </div>
-                  <h2 className="text-xl font-bold text-slate-900">Personal Information</h2>
-                </div>
-                {!editingName && (
-                  <button 
-                    onClick={() => setEditingName(true)}
-                    className={`${isOwner ? 'text-emerald-600' : 'text-blue-600'} font-bold text-sm hover:underline flex items-center gap-1`}
-                  >
-                    <FiEdit2 className="h-4 w-4" /> Edit Info
-                  </button>
-                )}
-              </div>
-              
-              <div className="p-8 space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Full Display Name</label>
-                    {editingName ? (
-                      <div className="flex gap-2">
-                        <input 
-                          type="text" 
-                          className="flex-grow px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-bold text-slate-700"
-                          value={newName}
-                          onChange={(e) => setNewName(e.target.value)}
-                        />
-                        <button 
-                          onClick={handleNameUpdate}
-                          disabled={nameLoading}
-                          className={`p-3 ${isOwner ? 'bg-emerald-600 shadow-emerald-200' : 'bg-blue-600 shadow-blue-200'} text-white rounded-xl shadow-lg hover:opacity-90 disabled:opacity-50 transition-all`}
-                        >
-                          <FiCheck />
-                        </button>
-                        <button 
-                          onClick={() => { setEditingName(false); setNewName(profile?.name || ''); }}
-                          className="p-3 bg-gray-100 text-slate-400 rounded-xl hover:bg-gray-200 transition-all"
-                        >
-                          <FiX />
-                        </button>
-                      </div>
-                    ) : (
-                      <p className="px-4 py-3 bg-gray-50 rounded-xl font-bold text-slate-700 border border-transparent">{profile?.name}</p>
-                    )}
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Email Address</label>
-                    <div className="px-4 py-3 bg-gray-50 rounded-xl font-bold text-slate-400 border border-transparent flex items-center justify-between">
-                      {profile?.email}
-                      <FiLock className="h-3 w-3" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Security Settings */}
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-              <div className="p-8 border-b border-gray-50 flex items-center gap-3">
-                <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl">
-                  <FiLock className="h-5 w-5" />
-                </div>
-                <h2 className="text-xl font-bold text-slate-900">Security Settings</h2>
-              </div>
-              
-              <div className="p-8">
-                {!showPasswordForm ? (
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 p-6 bg-gray-50 rounded-2xl border border-gray-100">
-                    <div>
-                      <h3 className="font-bold text-slate-900">Account Password</h3>
-                      <p className="text-sm text-gray-500 mt-1">Change your password to keep your account secure.</p>
-                    </div>
-                    <button 
-                      onClick={() => setShowPasswordForm(true)}
-                      className="bg-white hover:bg-gray-50 text-slate-900 px-6 py-3 rounded-xl font-bold border border-gray-200 transition-all shadow-sm whitespace-nowrap"
-                    >
-                      Update Password
-                    </button>
-                  </div>
-                ) : (
-                  <form onSubmit={handlePasswordChange} className="max-w-md space-y-6">
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Current Password</label>
-                        <input 
-                          type="password" 
-                          required
-                          className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none font-medium text-slate-700"
-                          value={currentPassword}
-                          onChange={(e) => setCurrentPassword(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">New Password</label>
-                        <input 
-                          type="password" 
-                          required
-                          className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none font-medium text-slate-700"
-                          value={newPassword}
-                          onChange={(e) => setNewPassword(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Confirm New Password</label>
-                        <input 
-                          type="password" 
-                          required
-                          className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none font-medium text-slate-700"
-                          value={confirmPassword}
-                          onChange={(e) => setConfirmPassword(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    
-                    {passwordMessage && (
-                      <div className={`p-4 rounded-xl ${passwordMessage.includes('success') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                        <p className="text-sm font-bold flex items-center gap-2">
-                          {passwordMessage.includes('success') ? <FiCheckCircle /> : <FiInfo />}
-                          {passwordMessage}
-                        </p>
-                      </div>
-                    )}
-
-                    <div className="flex gap-3">
-                      <button 
-                        type="submit"
-                        disabled={passwordLoading}
-                        className={`${isOwner ? 'bg-emerald-600 shadow-emerald-200' : 'bg-blue-600 shadow-blue-200'} text-white px-8 py-3 rounded-xl font-bold shadow-lg hover:opacity-90 transition-all disabled:opacity-50`}
-                      >
-                        {passwordLoading ? 'Saving...' : 'Save Password'}
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={() => { 
-                          setShowPasswordForm(false); 
-                          setPasswordMessage(''); 
-                          setCurrentPassword('');
-                          setNewPassword('');
-                          setConfirmPassword('');
-                        }}
-                        className="px-8 py-3 bg-gray-100 text-slate-600 font-bold rounded-xl hover:bg-gray-200 transition-all"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </form>
-                )}
-              </div>
-            </div>
-
-            {/* ========== OWNER-SPECIFIC: QUICK LINKS ========== */}
-            {isOwner && (
-              <div className="bg-gradient-to-br from-emerald-900 to-teal-900 text-white rounded-2xl shadow-lg p-8 border border-emerald-700/30">
-                <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
-                  <FiHome /> Quick Actions
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Link 
-                    to="/owner/dashboard"
-                    className="p-4 bg-white/10 hover:bg-white/20 rounded-xl flex items-center gap-3 transition-all border border-white/10"
-                  >
-                    <FiBarChart2 className="h-6 w-6" />
-                    <span className="font-bold">View Dashboard</span>
-                  </Link>
-                  <Link 
-                    to="/owner/add-property"
-                    className="p-4 bg-white/10 hover:bg-white/20 rounded-xl flex items-center gap-3 transition-all border border-white/10"
-                  >
-                    <FiPlus className="h-6 w-6" />
-                    <span className="font-bold">Add Property</span>
-                  </Link>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Sidebar */}
-          <div className="space-y-8">
-            {/* Notification Preferences */}
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <FiBell className={isOwner ? 'text-emerald-600' : 'text-blue-600'} /> Notifications
-                </h3>
-                {prefsMessage && (
-                  <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-full">
-                    {prefsMessage}
-                  </span>
-                )}
-              </div>
-              <div className="space-y-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">
-                      {isOwner ? 'New Reports' : 'Security Alerts'}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {isOwner ? 'When students file reports on your properties' : 'Critical safety reports in your area'}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => handleNotificationToggle('securityAlerts')}
-                    disabled={savingPrefs}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 ${isOwner ? 'focus:ring-emerald-500' : 'focus:ring-blue-500'} focus:ring-offset-2 disabled:opacity-50 ${
-                      notificationPrefs.securityAlerts ? (isOwner ? 'bg-emerald-600' : 'bg-blue-600') : 'bg-gray-200'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                        notificationPrefs.securityAlerts ? 'translate-x-5' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">Response Updates</p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {isOwner ? 'Student verification of your resolutions' : 'When owners reply to your reports'}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => handleNotificationToggle('responseUpdates')}
-                    disabled={savingPrefs}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 ${isOwner ? 'focus:ring-emerald-500' : 'focus:ring-blue-500'} focus:ring-offset-2 disabled:opacity-50 ${
-                      notificationPrefs.responseUpdates ? (isOwner ? 'bg-emerald-600' : 'bg-blue-600') : 'bg-gray-200'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                        notificationPrefs.responseUpdates ? 'translate-x-5' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">Platform News</p>
-                    <p className="text-xs text-gray-500 mt-0.5">New features and safety guides</p>
-                  </div>
-                  <button
-                    onClick={() => handleNotificationToggle('platformNews')}
-                    disabled={savingPrefs}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 ${isOwner ? 'focus:ring-emerald-500' : 'focus:ring-blue-500'} focus:ring-offset-2 disabled:opacity-50 ${
-                      notificationPrefs.platformNews ? (isOwner ? 'bg-emerald-600' : 'bg-blue-600') : 'bg-gray-200'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                        notificationPrefs.platformNews ? 'translate-x-5' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Danger Zone */}
-            <div className="bg-red-50 rounded-2xl p-8 border border-red-100">
-              <h3 className="text-lg font-bold text-red-900 mb-4 flex items-center gap-2">
-                <FiTrash2 className="h-5 w-5" /> Danger Zone
-              </h3>
-              <p className="text-xs text-red-700/80 mb-8 leading-relaxed font-medium">
-                Once you delete your account, there is no going back. All your {isOwner ? 'properties and resolution data' : 'safety contributions and data'} will be permanently removed.
-              </p>
-              <button 
-                onClick={() => { 
-                  if(window.confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
-                    alert('Account deletion request received. Our team will contact you shortly.');
-                  }
-                }}
-                className="w-full py-3 bg-white text-red-600 border border-red-200 rounded-xl font-bold text-sm hover:bg-red-600 hover:text-white transition-all shadow-sm"
-              >
-                Delete Account
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+      </SubtleOrb>
+    </>
   );
 }
+
+const CSS = `
+  .pf-page { min-height: 100vh; background: transparent; padding-top: 60px; }
+
+  .pf-header { background: rgba(5,5,10,0.8); border-bottom: 1px solid var(--border); padding: 36px 0 0; margin-bottom: 40px; backdrop-filter: blur(12px); }
+  .pf-header-inner { max-width: 1000px; margin: 0 auto; padding: 0 32px 32px; }
+  .pf-back-link { font-size: 13px; color: var(--text-3); text-decoration: none; display: block; margin-bottom: 20px; transition: color 0.2s; }
+  .pf-back-link:hover { color: var(--text-1); }
+
+  .pf-hero-row { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+
+  .pf-avatar-wrap { position: relative; }
+  .pf-avatar {
+    width: 88px; height: 88px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2rem; font-weight: 700; color: white;
+    overflow: hidden; border: 3px solid rgba(255,255,255,0.1);
+    box-shadow: 0 0 40px rgba(99,102,241,0.25);
+  }
+  .pf-avatar-edit {
+    position: absolute; bottom: 0; right: 0;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--surface); border: 1px solid var(--border);
+    font-size: 12px; cursor: none;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+  }
+  .pf-avatar-edit:hover { background: var(--panel); border-color: var(--border-hi); }
+
+  .pf-name-row { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+  .pf-name { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.04em; color: var(--text-1); }
+  .pf-email { font-size: 13px; color: var(--text-2); margin-bottom: 4px; }
+  .pf-since { font-size: 12px; color: var(--text-3); }
+
+  .pf-stats {
+    max-width: 1000px; margin: 0 auto; padding: 0 32px 0;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    border-top: 1px solid var(--border); background: var(--border); gap: 1px;
+  }
+  .pf-stat { padding: 18px 24px; background: rgba(5,5,10,0.8); display: flex; flex-direction: column; gap: 3px; }
+  .pf-stat-icon { font-size: 16px; margin-bottom: 4px; }
+  .pf-stat-num { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.04em; }
+  .pf-stat-label { font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); }
+
+  .pf-body { max-width: 1000px; margin: 0 auto; padding: 0 32px 60px; }
+
+  .pf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media(max-width: 768px) { .pf-grid { grid-template-columns: 1fr; } }
+  .pf-col { display: flex; flex-direction: column; gap: 16px; }
+
+  .pf-card { padding: 24px; border-radius: var(--r-lg); }
+  .pf-card-header { display: flex; justify-content: space-between; align-items: center; }
+  .pf-card-title { font-size: 13px; font-weight: 700; color: var(--text-1); margin-bottom: 4px; }
+
+  .pf-divider { height: 1px; background: rgba(255,255,255,0.05); margin: 12px 0; }
+
+  .pf-field-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; gap: 16px; flex-wrap: wrap; }
+  .pf-field-value { font-size: 13px; color: var(--text-1); font-weight: 500; }
+  .pf-field-value-row { display: flex; align-items: center; gap: 12px; }
+  .pf-edit-link { font-size: 11px; font-weight: 600; color: var(--indigo); background: none; border: none; cursor: none; transition: color 0.2s; padding: 0; font-family: var(--font-body); }
+  .pf-edit-link:hover { color: var(--violet); }
+  .pf-edit-row { display: flex; gap: 8px; align-items: center; flex: 1; }
+  .pf-edit-input { flex: 1; padding: 9px 12px !important; font-size: 13px !important; }
+
+  .pf-toggle-btn { font-size: 12px; font-weight: 600; color: var(--indigo); background: none; border: none; cursor: none; font-family: var(--font-body); }
+
+  .pf-notif-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; gap: 16px; }
+  .pf-notif-label { font-size: 13px; font-weight: 600; color: var(--text-1); margin-bottom: 2px; }
+  .pf-notif-sub   { font-size: 11px; color: var(--text-3); }
+
+  .pf-toggle {
+    width: 40px; height: 22px; border-radius: 11px; flex-shrink: 0;
+    background: var(--border); border: none; cursor: none; position: relative;
+    transition: background 0.3s; box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
+  }
+  .pf-toggle-thumb {
+    position: absolute; top: 3px; left: 3px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: white; transition: transform 0.3s cubic-bezier(.22,.68,0,1.2);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  }
+  .pf-toggle-on .pf-toggle-thumb { transform: translateX(18px); }
+
+  .pf-actions-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .pf-action-btn {
+    display: flex; align-items: center; gap: 10px;
+    padding: 13px 14px; border-radius: var(--r-sm);
+    background: var(--panel); border: 1px solid var(--border);
+    font-size: 13px; font-weight: 500; color: var(--text-2);
+    transition: all 0.2s; cursor: none;
+  }
+  .pf-action-btn:hover { border-color: var(--border-hi); color: var(--text-1); transform: translateY(-1px); }
+  .pf-action-icon { font-size: 16px; }
+
+  .field-group { margin-bottom: 14px; }
+
+  /* Modal */
+  .pf-modal-overlay { position: fixed; inset: 0; z-index: 9000; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .pf-modal { width: 100%; max-width: 400px; padding: 28px; border-radius: var(--r-xl); }
+  .pf-modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  .pf-modal-close { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border); background: transparent; cursor: none; color: var(--text-3); font-size: 13px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+  .pf-modal-close:hover { border-color: rgba(244,63,94,0.4); color: #fda4af; }
+  .pf-photo-preview { display: flex; justify-content: center; }
+  .pf-photo-img { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255,255,255,0.1); }
+  .pf-photo-placeholder { width: 120px; height: 120px; border-radius: 50%; background: linear-gradient(135deg, var(--indigo), var(--violet)); display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 700; color: white; }
+`;

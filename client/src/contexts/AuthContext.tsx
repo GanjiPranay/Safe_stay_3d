@@ -10,6 +10,7 @@ interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  register: (name: string, email: string, password: string, role: 'student' | 'owner') => Promise<any>;
   login: (email: string, password: string) => Promise<any>;
   logout: () => void;
   refreshUser: () => void;
@@ -91,6 +92,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  const register = async (name: string, email: string, password: string, role: 'student' | 'owner') => {
+    const res = await fetch(`${API}/api/auth/signup`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name, email, password, role }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.message || 'Registration failed');
+    }
+
+    return data;
+  };
+
   const refreshUser = () => {
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
@@ -109,7 +128,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, register, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

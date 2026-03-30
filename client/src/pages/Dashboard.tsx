@@ -1,489 +1,255 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { 
-  FiFileText,
-  FiShield,
-  FiAlertTriangle,
-  FiAlertCircle,
-  FiCheckCircle,
-  FiClock,
-  FiPlus,
-  FiArrowRight,
-  FiList,
-  FiTrendingUp,
-  FiActivity
-} from 'react-icons/fi';
+import { SubtleOrb, PageLoader, SkeletonList, SkeletonCard, useToast } from './DesignSystem';
 import UpvoteButton from '../components/UpvoteButton';
 
-interface Accommodation {
-  _id: string;
-  name: string;
-  location: string;
-  trustScore: number;
-  type?: string;
-}
+interface Accommodation { _id: string; name: string; location: string; trustScore: number; type?: string; }
+interface Report { _id: string; accommodationName: string; issueType: string; description: string; createdAt: string; upvotes: number; upvotedBy: string[]; user: string | { _id: string }; }
 
-interface Report {
-  _id: string;
-  accommodationName: string;
-  issueType: string;
-  description: string;
-  createdAt: string;
-  upvotes: number;
-  upvotedBy: string[];
-  user: string | { _id: string };
-}
-
-// Calculate safety classification based on trust score
-const getSafetyClassification = (trustScore: number): 'Safe' | 'Caution' | 'Unsafe' => {
-  if (trustScore >= 80) return 'Safe';
-  if (trustScore >= 50) return 'Caution';
-  return 'Unsafe';
-};
+const classify = (score: number) =>
+  score >= 80 ? { label: 'Safe',    color: 'var(--emerald)', bg: 'rgba(16,185,129,0.1)'  } :
+  score >= 50 ? { label: 'Caution', color: 'var(--amber)',   bg: 'rgba(245,158,11,0.1)'  } :
+               { label: 'Unsafe',   color: 'var(--rose)',    bg: 'rgba(244,63,94,0.1)'   };
 
 export const Dashboard: React.FC = () => {
   const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const { user } = useAuth();
-  
-  const [reports, setReports] = useState<Report[]>([]);
+  const toast = useToast();
+  const [reports, setReports]             = useState<Report[]>([]);
   const [accommodations, setAccommodations] = useState<Accommodation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [currentUserId, setCurrentUserId] = useState<string>('');
+  const [loading, setLoading]             = useState(true);
+  const [currentUserId, setCurrentUserId] = useState('');
+  const [activeTab, setActiveTab]         = useState<'reports' | 'accommodations'>('reports');
 
-  // Get current user ID from token
   useEffect(() => {
     try {
-      const token = localStorage.getItem('token');
-      if (token) {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        setCurrentUserId(payload.user?.id || payload.id || payload.userId || '');
-      }
-    } catch {
-      setCurrentUserId('');
-    }
+      const t = localStorage.getItem('token');
+      if (t) { const p = JSON.parse(atob(t.split('.')[1])); setCurrentUserId(p.user?.id || p.id || ''); }
+    } catch {}
+    fetchAll();
   }, []);
 
-  // Fetch all data
-  const fetchData = async () => {
+  const fetchAll = async () => {
     setLoading(true);
-    setError("");
-    
     try {
-      // Fetch reports
-      const reportsRes = await fetch(`${API}/api/reports`);
-      const reportsData = await reportsRes.json();
-      
-      // Fetch accommodations
-      const accommodationsRes = await fetch(`${API}/api/accommodations`);
-      const accommodationsData = await accommodationsRes.json();
-      
-      if (reportsData.success) {
-        setReports(reportsData.data || []);
-      }
-      
-      if (accommodationsData.success) {
-        setAccommodations(accommodationsData.data || []);
-      } else if (Array.isArray(accommodationsData)) {
-        // Some APIs return array directly
-        setAccommodations(accommodationsData);
-      }
-      
-    } catch (err) {
-      console.error('Error fetching data:', err);
-      setError("Failed to load dashboard data");
-    } finally {
-      setLoading(false);
-    }
+      const [rr, ar] = await Promise.all([fetch(`${API}/api/reports`), fetch(`${API}/api/accommodations`)]);
+      const rd = await rr.json(); const ad = await ar.json();
+      if (rd.success) setReports(rd.data || []);
+      if (ad.success) setAccommodations(ad.data || []);
+    } catch {
+      toast.error('Failed to load dashboard data');
+    } finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, [API]);
+  const handleUpvote = async (reportId: string) => {
+    const token = localStorage.getItem('token');
+    if (!token) { toast.error('Please login to upvote'); return; }
+    try {
+      const res = await fetch(`${API}/api/reports/${reportId}/upvote`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setReports(rs => rs.map(r => r._id === reportId ? { ...r, upvotes: data.upvotes, upvotedBy: data.upvotedBy } : r));
+        toast.success('Upvoted successfully');
+      }
+    } catch { toast.error('Failed to upvote'); }
+  };
 
-  // Calculate real statistics from actual data
-  const totalAccommodations = accommodations.length;
-  
-  // High Risk = Trust Score < 50 (Unsafe)
-  const highRiskCount = accommodations.filter(acc => {
-    const score = acc.trustScore ?? 100; // Default to 100 if no score
-    return score < 50;
-  }).length;
-  
-  // Risky/Caution = Trust Score 50-79
-  const riskyCount = accommodations.filter(acc => {
-    const score = acc.trustScore ?? 100;
-    return score >= 50 && score < 80;
-  }).length;
-  
-  // Safe = Trust Score >= 80
-  const safeCount = accommodations.filter(acc => {
-    const score = acc.trustScore ?? 100;
-    return score >= 80;
-  }).length;
-  
-  // User's contribution count
-  const userImpactCount = reports.filter(r => {
-    const reportUserId = typeof r.user === 'string' ? r.user : r.user?._id;
-    return reportUserId === currentUserId;
-  }).length;
-
-  // Get accommodations that need attention (Unsafe or Caution)
-  const safetyAlerts = accommodations
-    .filter(acc => {
-      const score = acc.trustScore ?? 100;
-      return score < 80; // Show Caution and Unsafe
-    })
-    .sort((a, b) => (a.trustScore ?? 100) - (b.trustScore ?? 100)) // Sort by worst first
-    .slice(0, 5);
-
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="flex flex-col items-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-        <p className="text-gray-600 font-medium">Loading your safety dashboard...</p>
-      </div>
-    </div>
-  );
-
-  if (error) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl text-center">
-        <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-          <FiAlertTriangle className="h-8 w-8 text-red-600" />
-        </div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">{error}</h2>
-        <p className="text-gray-600 mb-6">We couldn't load your dashboard data. Please check your connection and try again.</p>
-        <button 
-          onClick={fetchData}
-          className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200"
-        >
-          Try Again
-        </button>
-      </div>
-    </div>
-  );
+  const recentReports = [...reports].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10);
+  const topAccomm     = [...accommodations].sort((a, b) => b.trustScore - a.trustScore).slice(0, 8);
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-12">
-      {/* Header Section */}
-      <div className="bg-slate-900 text-white pt-12 pb-24">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-2xl font-bold shadow-lg shadow-blue-900/20">
-                {user?.name?.charAt(0) || 'U'}
-              </div>
+    <>
+      <style>{CSS}</style>
+      <SubtleOrb>
+        <div className="dash-page">
+          {/* Header */}
+          <header className="dash-header fade-up">
+            <div className="dash-header-inner">
               <div>
-                <h1 className="text-3xl font-bold">Welcome back, {user?.name}! 👋</h1>
-                <p className="text-blue-200 mt-1 flex items-center gap-2">
-                  <FiCheckCircle className="text-green-400" />
-                  {userImpactCount > 0 
-                    ? `You've filed ${userImpactCount} safety report${userImpactCount > 1 ? 's' : ''}`
-                    : 'Start contributing to student safety'
-                  }
-                </p>
+                <p className="dash-eyebrow">Student Dashboard</p>
+                <h1 className="dash-title">
+                  {user?.name ? `Hello, ${user.name.split(' ')[0]} 👋` : 'Dashboard'}
+                </h1>
+                <p className="dash-sub">Real-time safety reports from your city.</p>
+              </div>
+              <div className="dash-header-actions">
+                <Link to="/report" className="ss-btn ss-btn-rose" style={{ textDecoration: 'none', fontSize: 13 }}>+ Report Issue</Link>
+                <Link to="/accommodations" className="ss-btn ss-btn-ghost" style={{ textDecoration: 'none', fontSize: 13 }}>Browse →</Link>
               </div>
             </div>
-            <Link
-              to="/report"
-              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-slate-900 font-bold rounded-xl hover:from-yellow-300 hover:to-orange-400 transition-all shadow-lg shadow-orange-900/20"
-            >
-              <FiPlus className="h-5 w-5" />
-              🚨 Report an Issue
-            </Link>
-          </div>
-        </div>
-      </div>
 
-      {/* Stats Cards - Overlapping the header */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-12">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Total Accommodations */}
-          <div className="bg-white p-6 rounded-2xl shadow-xl shadow-gray-200/50 border border-gray-100 group hover:border-blue-200 transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-blue-50 rounded-xl text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-all">
-                <FiShield className="h-6 w-6" />
-              </div>
-              <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-full">Total</span>
-            </div>
-            <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Total Accommodations</p>
-            <p className="text-3xl font-extrabold text-gray-900 mt-1">{totalAccommodations}</p>
-          </div>
-          
-          {/* High Risk (Unsafe) - Trust Score < 50 */}
-          <div className="bg-white p-6 rounded-2xl shadow-xl shadow-gray-200/50 border border-gray-100 group hover:border-red-200 transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-red-50 rounded-xl text-red-600 group-hover:bg-red-600 group-hover:text-white transition-all">
-                <FiAlertTriangle className="h-6 w-6" />
-              </div>
-              {highRiskCount > 0 ? (
-                <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-full">Urgent</span>
-              ) : (
-                <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded-full">All Clear</span>
-              )}
-            </div>
-            <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">High Risk (&lt;50)</p>
-            <p className={`text-3xl font-extrabold mt-1 ${highRiskCount > 0 ? 'text-red-600' : 'text-gray-900'}`}>
-              {highRiskCount}
-            </p>
-          </div>
-
-          {/* Caution - Trust Score 50-79 */}
-          <div className="bg-white p-6 rounded-2xl shadow-xl shadow-gray-200/50 border border-gray-100 group hover:border-yellow-200 transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-yellow-50 rounded-xl text-yellow-600 group-hover:bg-yellow-600 group-hover:text-white transition-all">
-                <FiAlertCircle className="h-6 w-6" />
-              </div>
-              {riskyCount > 0 ? (
-                <span className="text-xs font-bold text-yellow-600 bg-yellow-50 px-2 py-1 rounded-full">Caution</span>
-              ) : (
-                <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded-full">None</span>
-              )}
-            </div>
-            <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Caution (50-79)</p>
-            <p className={`text-3xl font-extrabold mt-1 ${riskyCount > 0 ? 'text-yellow-600' : 'text-gray-900'}`}>
-              {riskyCount}
-            </p>
-          </div>
-
-          {/* Safe - Trust Score >= 80 */}
-          <div className="bg-white p-6 rounded-2xl shadow-xl shadow-gray-200/50 border border-gray-100 group hover:border-green-200 transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-green-50 rounded-xl text-green-600 group-hover:bg-green-600 group-hover:text-white transition-all">
-                <FiCheckCircle className="h-6 w-6" />
-              </div>
-              <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded-full">Safe</span>
-            </div>
-            <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Safe (80+)</p>
-            <p className="text-3xl font-extrabold text-green-600 mt-1">{safeCount}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content Grid */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-12">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Left Column: Quick Actions & Activity */}
-          <div className="lg:col-span-2 space-y-8">
-            
-            {/* Quick Navigation Card */}
-            <Link to="/my-reports" className="flex items-center gap-4 p-6 bg-white rounded-2xl border border-gray-100 hover:border-indigo-500 hover:shadow-xl hover:shadow-indigo-500/5 transition-all group">
-              <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-all">
-                <FiList className="h-6 w-6" />
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-900">My Safety Contributions</h3>
-                <p className="text-sm text-gray-500">
-                  {userImpactCount > 0 
-                    ? `You have ${userImpactCount} report${userImpactCount > 1 ? 's' : ''} - track their status`
-                    : 'Track your reported issues and their status'
-                  }
-                </p>
-              </div>
-              <FiArrowRight className="ml-auto text-gray-300 group-hover:text-indigo-500 transition-colors" />
-            </Link>
-
-            {/* Recent Activity Feed */}
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-              <div className="p-6 border-b border-gray-50 flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <FiActivity className="h-5 w-5 text-indigo-600" />
-                  <h2 className="text-xl font-bold text-gray-900">Recent Safety Reports</h2>
-                  <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-semibold">
-                    {reports.length} total
-                  </span>
+            {/* Stats */}
+            <div className="dash-stats">
+              {[
+                { label: 'Total Reports',     value: reports.length,                                              icon: '📄', color: 'var(--indigo)'  },
+                { label: 'Listed Properties', value: accommodations.length,                                       icon: '🏠', color: 'var(--emerald)' },
+                { label: 'Safe Properties',   value: accommodations.filter(a => a.trustScore >= 80).length,       icon: '✅', color: 'var(--emerald)' },
+                { label: 'Needs Review',      value: accommodations.filter(a => a.trustScore < 50).length,        icon: '⚠️', color: 'var(--rose)'    },
+              ].map((s, i) => (
+                <div key={i} className="dash-stat fade-up" style={{ animationDelay: `${0.05 + i * 0.06}s` }}>
+                  <div className="dash-stat-icon">{s.icon}</div>
+                  <div className="dash-stat-num" style={{ color: s.color }}>{s.value}</div>
+                  <div className="dash-stat-label">{s.label}</div>
                 </div>
-                <Link to="/accommodations" className="text-sm font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1">
-                  View All <FiArrowRight className="h-3 w-3" />
-                </Link>
-              </div>
-              <div className="divide-y divide-gray-50">
-                {reports.length === 0 ? (
-                  <div className="p-12 text-center">
-                    <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <FiFileText className="h-8 w-8 text-gray-300" />
-                    </div>
-                    <p className="text-gray-500 font-medium">No reports filed yet. Be the first to help!</p>
-                    <Link 
-                      to="/report" 
-                      className="inline-flex items-center gap-2 mt-4 px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors"
-                    >
-                      <FiPlus /> Report an Issue
-                    </Link>
+              ))}
+            </div>
+          </header>
+
+          <div className="dash-body">
+            {/* Tabs */}
+            <div className="dash-tabs fade-up fade-up-3">
+              <button onClick={() => setActiveTab('reports')} className={`dash-tab ${activeTab === 'reports' ? 'dash-tab-active' : ''}`}>
+                📄 Recent Reports
+              </button>
+              <button onClick={() => setActiveTab('accommodations')} className={`dash-tab ${activeTab === 'accommodations' ? 'dash-tab-active' : ''}`}>
+                🏠 Top Accommodations
+              </button>
+            </div>
+
+            {/* Reports tab */}
+            {activeTab === 'reports' && (
+              <div className="dash-reports-list fade-up fade-up-4">
+                {loading ? (
+                  Array.from({ length: 4 }).map((_, i) => <SkeletonList key={i} />)
+                ) : recentReports.length === 0 ? (
+                  <div className="dash-empty glass">
+                    <span style={{ fontSize: 32, opacity: 0.3 }}>📄</span>
+                    <p>No reports yet. Be the first to report an issue!</p>
+                    <Link to="/report" className="ss-btn" style={{ textDecoration: 'none', marginTop: 12 }}>Report an Issue</Link>
                   </div>
-                ) : (
-                  reports.slice(0, 5).map((report) => (
-                    <div key={report._id} className="p-6 hover:bg-gray-50 transition-colors">
-                      <div className="flex justify-between items-start mb-2">
+                ) : recentReports.map((r, i) => {
+                  const userId = typeof r.user === 'object' ? r.user?._id : r.user;
+                  const isOwn  = userId === currentUserId;
+                  return (
+                    <div key={r._id} className="report-card glass fade-up" style={{ animationDelay: `${i * 0.04}s` }}>
+                      <div className="report-card-header">
                         <div>
-                          <h3 className="font-bold text-gray-900 text-lg">{report.accommodationName}</h3>
-                          <div className="flex items-center gap-3 mt-1">
-                            <span className="px-3 py-1 bg-red-50 text-red-700 text-xs font-bold rounded-full border border-red-100">
-                              {report.issueType}
-                            </span>
-                            <span className="flex items-center gap-1 text-xs text-gray-400">
-                              <FiClock className="h-3 w-3" />
-                              {report.createdAt ? new Date(report.createdAt).toLocaleDateString() : 'Today'}
-                            </span>
-                          </div>
+                          <span className="report-tag">{r.issueType}</span>
+                          <h3 className="report-place">{r.accommodationName}</h3>
                         </div>
-                        {currentUserId && (
-                          <UpvoteButton
-                            reportId={report._id}
-                            initialUpvotes={report.upvotes || 0}
-                            initialHasUpvoted={(report.upvotedBy || []).includes(currentUserId)}
-                            isOwnReport={
-                              (typeof report.user === 'string' ? report.user : report.user?._id) === currentUserId
-                            }
-                          />
-                        )}
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          {isOwn && <span className="pill pill-indigo">My Report</span>}
+                          <UpvoteButton reportId={r._id} upvotes={r.upvotes} upvotedBy={r.upvotedBy} onUpvote={() => handleUpvote(r._id)} />
+                        </div>
                       </div>
-                      <p className="text-gray-600 text-sm line-clamp-2 mt-3">{report.description}</p>
+                      <p className="report-desc">{r.description}</p>
+                      <div className="report-meta">
+                        <span className="report-date">{new Date(r.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                      </div>
                     </div>
-                  ))
-                )}
+                  );
+                })}
               </div>
-              {reports.length > 5 && (
-                <div className="p-4 bg-gray-50 border-t border-gray-100 text-center">
-                  <Link to="/accommodations" className="text-sm font-bold text-blue-600 hover:text-blue-700">
-                    View All {reports.length} Reports →
-                  </Link>
-                </div>
-              )}
-            </div>
+            )}
+
+            {/* Accommodations tab */}
+            {activeTab === 'accommodations' && (
+              <div className="dash-accomm-grid fade-up fade-up-4">
+                {loading ? (
+                  Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
+                ) : topAccomm.map((a, i) => {
+                  const cls = classify(a.trustScore);
+                  return (
+                    <Link key={a._id} to={`/accommodations/${a._id}`} className="accomm-card glass" style={{ textDecoration: 'none', animationDelay: `${i * 0.04}s` }}>
+                      <div className="accomm-card-top">
+                        <div className="accomm-icon">🏠</div>
+                        <span className="accomm-score" style={{ color: cls.color, background: cls.bg }}>
+                          {a.trustScore}% {cls.label}
+                        </span>
+                      </div>
+                      <h3 className="accomm-name">{a.name}</h3>
+                      <p className="accomm-loc">{a.location}</p>
+                      {a.type && <span className="pill" style={{ marginTop: 12 }}>{a.type}</span>}
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
           </div>
-
-          {/* Right Column: Alerts & Tips */}
-          <div className="space-y-8">
-            {/* Safety Alerts */}
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-              <div className={`p-6 text-white flex items-center justify-between ${
-                safetyAlerts.length > 0 ? 'bg-red-600' : 'bg-green-600'
-              }`}>
-                <div className="flex items-center gap-2">
-                  {safetyAlerts.length > 0 ? (
-                    <FiAlertTriangle className="h-5 w-5 animate-pulse" />
-                  ) : (
-                    <FiCheckCircle className="h-5 w-5" />
-                  )}
-                  <h2 className="font-bold">
-                    {safetyAlerts.length > 0 ? 'Properties Need Attention' : 'All Properties Safe!'}
-                  </h2>
-                </div>
-                {safetyAlerts.length > 0 && (
-                  <span className="text-xs bg-white/20 px-2 py-1 rounded-full font-semibold">
-                    {safetyAlerts.length}
-                  </span>
-                )}
-              </div>
-              <div className="p-2 divide-y divide-gray-50">
-                {safetyAlerts.length > 0 ? (
-                  safetyAlerts.map(accommodation => {
-                    const score = accommodation.trustScore ?? 100;
-                    const isUnsafe = score < 50;
-                    
-                    return (
-                      <Link 
-                        to={`/accommodations/${accommodation._id}`} 
-                        key={accommodation._id} 
-                        className={`flex items-center gap-4 p-4 transition-all rounded-xl group ${
-                          isUnsafe ? 'hover:bg-red-50' : 'hover:bg-yellow-50'
-                        }`}
-                      >
-                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${
-                          isUnsafe 
-                            ? 'bg-red-100 text-red-600 group-hover:bg-red-600 group-hover:text-white' 
-                            : 'bg-yellow-100 text-yellow-600 group-hover:bg-yellow-600 group-hover:text-white'
-                        }`}>
-                          <FiTrendingUp className="h-6 w-6" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h3 className="font-bold text-gray-900 truncate">{accommodation.name}</h3>
-                          <p className="text-xs text-gray-500 truncate">{accommodation.location}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <div className="h-1.5 flex-grow bg-gray-100 rounded-full overflow-hidden max-w-[100px]">
-                              <div 
-                                className={`h-full ${isUnsafe ? 'bg-red-500' : 'bg-yellow-500'}`}
-                                style={{ width: `${score}%` }}
-                              ></div>
-                            </div>
-                            <span className={`text-[10px] font-bold whitespace-nowrap ${
-                              isUnsafe ? 'text-red-600' : 'text-yellow-600'
-                            }`}>
-                              Score: {score}
-                            </span>
-                          </div>
-                        </div>
-                      </Link>
-                    );
-                  })
-                ) : (
-                  <div className="p-8 text-center">
-                    <FiCheckCircle className="h-10 w-10 text-green-500 mx-auto mb-2" />
-                    <p className="text-gray-600 font-medium">All accommodations have good safety ratings!</p>
-                    <p className="text-xs text-gray-400 mt-1">Trust scores are 80 or above</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Safety Tips Card */}
-            <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl shadow-xl p-6 text-white relative overflow-hidden">
-              <div className="absolute -top-10 -right-10 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
-              <FiShield className="h-12 w-12 text-blue-200/40 mb-4" />
-              <h3 className="text-xl font-bold mb-2">Safety Pro Tip</h3>
-              <p className="text-blue-100 text-sm leading-relaxed mb-6">
-                Always check the water quality and electrical wiring before moving into a new PG. If you spot an issue, report it here to help others.
-              </p>
-              <Link 
-                to="/report" 
-                className="inline-flex items-center text-sm font-bold text-yellow-400 hover:text-yellow-300"
-              >
-                File a Report <FiArrowRight className="ml-1 h-4 w-4" />
-              </Link>
-            </div>
-
-            {/* Your Impact Card */}
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-              <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <FiActivity className="text-blue-600" /> Your Impact
-              </h3>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Reports Filed</span>
-                  <span className="font-bold text-gray-900">{userImpactCount}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Total Platform Reports</span>
-                  <span className="font-bold text-blue-600">{reports.length}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Safe Properties</span>
-                  <span className="font-bold text-green-600">{safeCount} / {totalAccommodations}</span>
-                </div>
-                <div className="pt-4 border-t border-gray-100">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Your Status</span>
-                    <span className={`font-bold px-3 py-1 rounded-full text-xs ${
-                      userImpactCount >= 5 
-                        ? 'bg-yellow-100 text-yellow-700' 
-                        : userImpactCount >= 2 
-                          ? 'bg-blue-100 text-blue-700' 
-                          : 'bg-gray-100 text-gray-700'
-                    }`}>
-                      {userImpactCount >= 5 ? '🏆 Champion' : userImpactCount >= 2 ? '⭐ Contributor' : '🌱 Getting Started'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
         </div>
-      </div>
-    </div>
+      </SubtleOrb>
+    </>
   );
 };
+
+const CSS = `
+  .dash-page { min-height: 100vh; background: transparent; padding-top: 60px; }
+
+  .dash-header {
+    background: rgba(5,5,10,0.75); border-bottom: 1px solid var(--border);
+    padding: 40px 0 0; margin-bottom: 40px;
+    backdrop-filter: blur(12px);
+  }
+  .dash-header-inner {
+    max-width: 1100px; margin: 0 auto; padding: 0 32px;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: 32px; flex-wrap: wrap; gap: 16px;
+  }
+  .dash-eyebrow { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: var(--indigo); margin-bottom: 8px; }
+  .dash-title { font-size: 2rem; font-weight: 700; letter-spacing: -0.04em; color: var(--text-1); margin-bottom: 4px; }
+  .dash-sub { font-size: 13px; color: var(--text-2); }
+  .dash-header-actions { display: flex; gap: 10px; align-items: center; padding-top: 12px; }
+
+  .dash-stats {
+    max-width: 1100px; margin: 0 auto; padding: 0 32px 32px;
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 1px; background: var(--border); border-top: 1px solid var(--border);
+  }
+  @media(max-width: 700px) { .dash-stats { grid-template-columns: repeat(2, 1fr); } }
+
+  .dash-stat {
+    padding: 20px 24px; background: rgba(5,5,10,0.8);
+    display: flex; flex-direction: column; gap: 4px;
+    transition: background 0.2s;
+  }
+  .dash-stat:hover { background: rgba(12,12,22,0.9); }
+  .dash-stat-icon { font-size: 18px; margin-bottom: 6px; }
+  .dash-stat-num { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.04em; }
+  .dash-stat-label { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); }
+
+  .dash-body { max-width: 1100px; margin: 0 auto; padding: 0 32px 60px; }
+
+  .dash-tabs {
+    display: flex; gap: 4px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: var(--r-md);
+    padding: 4px; width: fit-content; margin-bottom: 24px;
+  }
+  .dash-tab {
+    padding: 9px 20px; border: none; background: transparent; cursor: none;
+    font-family: var(--font-body); font-size: 13px; font-weight: 600;
+    border-radius: 10px; color: var(--text-3); transition: all 0.2s;
+  }
+  .dash-tab:hover { color: var(--text-1); }
+  .dash-tab-active { background: rgba(99,102,241,0.15); color: #a5b4fc; }
+
+  .dash-reports-list { display: flex; flex-direction: column; gap: 12px; }
+
+  .report-card { padding: 20px 24px; }
+  .report-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; gap: 12px; flex-wrap: wrap; }
+  .report-tag { display: inline-block; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--indigo); margin-bottom: 4px; }
+  .report-place { font-size: 15px; font-weight: 700; letter-spacing: -0.02em; color: var(--text-1); }
+  .report-desc { font-size: 13px; color: var(--text-2); line-height: 1.6; margin-bottom: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .report-meta { display: flex; align-items: center; gap: 12px; }
+  .report-date { font-size: 11px; color: var(--text-3); }
+
+  .dash-empty {
+    padding: 64px; text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+  }
+  .dash-empty p { font-size: 13px; color: var(--text-3); }
+
+  .dash-accomm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+
+  .accomm-card { padding: 22px; cursor: none; transition: border-color 0.25s, transform 0.2s; }
+  .accomm-card:hover { border-color: rgba(99,102,241,0.3); transform: translateY(-3px); }
+  .accomm-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .accomm-icon {
+    width: 40px; height: 40px; border-radius: 12px;
+    background: var(--panel); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center; font-size: 18px;
+  }
+  .accomm-score { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 4px 10px; border-radius: 100px; }
+  .accomm-name { font-size: 14px; font-weight: 700; letter-spacing: -0.02em; color: var(--text-1); margin-bottom: 4px; }
+  .accomm-loc { font-size: 12px; color: var(--text-2); }
+`;

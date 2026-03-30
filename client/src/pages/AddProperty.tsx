@@ -4,73 +4,34 @@ import { useAuth } from '../contexts/AuthContext';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { 
-  FiHome, FiMapPin, FiPhone, FiDollarSign, 
-  FiUsers, FiArrowLeft, FiCheck,
-  FiAlertCircle, FiSave, FiSearch, FiNavigation, FiX, FiEdit3
-} from 'react-icons/fi';
+import { PageLoader, Spinner } from './DesignSystem';
 
-// Fix for default marker icon in Leaflet
 const defaultIcon = L.icon({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
+  iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41],
 });
-
 L.Marker.prototype.options.icon = defaultIcon;
 
-// Custom marker for selected location
 const selectedIcon = L.icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
+  iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41],
 });
 
-// Component to handle map clicks
-function LocationMarker({ 
-  position, 
-  setPosition 
-}: { 
-  position: [number, number] | null; 
-  setPosition: (pos: [number, number]) => void;
-}) {
-  useMapEvents({
-    click(e) {
-      setPosition([e.latlng.lat, e.latlng.lng]);
-    },
-  });
-
-  return position ? (
-    <Marker position={position} icon={selectedIcon} />
-  ) : null;
+function LocationMarker({ position, setPosition }: { position: [number, number] | null; setPosition: (p: [number, number]) => void }) {
+  useMapEvents({ click(e) { setPosition([e.latlng.lat, e.latlng.lng]); } });
+  return position ? <Marker position={position} icon={selectedIcon} /> : null;
 }
 
-// Component to fly to location
 function FlyToLocation({ position }: { position: [number, number] | null }) {
   const map = useMap();
-  
-  useEffect(() => {
-    if (position) {
-      map.flyTo(position, 16, { duration: 1.5 });
-    }
-  }, [position, map]);
-  
+  useEffect(() => { if (position) map.flyTo(position, 16, { duration: 1.5 }); }, [position, map]);
   return null;
 }
 
-// Component for search functionality
-function SearchControl({ 
-  onLocationSelect 
-}: { 
-  onLocationSelect: (lat: number, lng: number, address: string) => void;
-}) {
+function SearchControl({ onLocationSelect }: { onLocationSelect: (lat: number, lng: number, addr: string) => void }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
@@ -78,90 +39,45 @@ function SearchControl({
 
   const searchLocation = async () => {
     if (!query.trim()) return;
-    
     setSearching(true);
     try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`
-      );
-      const data = await response.json();
-      setResults(data);
-      setShowResults(true);
-    } catch (error) {
-      console.error('Search error:', error);
-    } finally {
-      setSearching(false);
-    }
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`);
+      setResults(await res.json()); setShowResults(true);
+    } catch {} finally { setSearching(false); }
   };
 
-  const handleSelect = (result: any) => {
-    onLocationSelect(
-      parseFloat(result.lat),
-      parseFloat(result.lon),
-      result.display_name
-    );
-    setQuery(result.display_name.split(',')[0]);
-    setShowResults(false);
+  const handleSelect = (r: any) => {
+    onLocationSelect(parseFloat(r.lat), parseFloat(r.lon), r.display_name);
+    setQuery(r.display_name.split(',')[0]); setShowResults(false);
   };
 
   return (
-    <div className="relative">
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && searchLocation()}
+    <div style={{ position: 'relative' }}>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', opacity: 0.5, pointerEvents: 'none' }}>🔍</span>
+          <input type="text" value={query} onChange={e => setQuery(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && searchLocation()}
             placeholder="Search location (e.g., Hitech City, Hyderabad)"
-            className="w-full pl-12 pr-4 py-3 bg-white border-2 border-slate-200 rounded-xl focus:border-emerald-500 outline-none transition-all font-semibold text-sm"
-          />
-          {query && (
-            <button
-              type="button"
-              onClick={() => { setQuery(''); setResults([]); setShowResults(false); }}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-            >
-              <FiX />
-            </button>
-          )}
+            className="ss-input" style={{ paddingLeft: 40 }} />
         </div>
-        <button
-          type="button"
-          onClick={searchLocation}
-          disabled={searching}
-          className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all disabled:opacity-50 flex items-center gap-2"
-        >
-          {searching ? (
-            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          ) : (
-            <FiSearch />
-          )}
-          Search
+        <button type="button" onClick={searchLocation} disabled={searching} className="ss-btn ss-btn-emerald" style={{ whiteSpace: 'nowrap' }}>
+          {searching ? <Spinner size={14} /> : '🔍'} Search
         </button>
       </div>
-      
-      {/* Search Results Dropdown */}
       {showResults && results.length > 0 && (
-        <div className="absolute z-[1000] w-full mt-2 bg-white rounded-xl shadow-2xl border border-slate-200 max-h-60 overflow-y-auto">
-          {results.map((result, index) => (
-            <button
-              key={index}
-              type="button"
-              onClick={() => handleSelect(result)}
-              className="w-full px-4 py-3 text-left hover:bg-emerald-50 transition-colors border-b border-slate-100 last:border-b-0"
-            >
-              <p className="font-semibold text-slate-900 text-sm truncate">{result.display_name.split(',')[0]}</p>
-              <p className="text-xs text-slate-500 truncate">{result.display_name}</p>
+        <div className="ap-search-dropdown glass">
+          {results.map((r, i) => (
+            <button key={i} type="button" onClick={() => handleSelect(r)} className="ap-search-result">
+              <p className="ap-search-result-name">{r.display_name.split(',')[0]}</p>
+              <p className="ap-search-result-full">{r.display_name}</p>
             </button>
           ))}
         </div>
       )}
-      
       {showResults && results.length === 0 && !searching && (
-        <div className="absolute z-[1000] w-full mt-2 bg-white rounded-xl shadow-2xl border border-slate-200 p-4 text-center">
-          <p className="text-slate-500 text-sm">No locations found. Try a different search.</p>
+        <div className="ap-search-dropdown glass" style={{ padding: '14px 16px', textAlign: 'center' }}>
+          <p style={{ fontSize: 13, color: 'var(--text-3)' }}>No locations found. Try a different search.</p>
         </div>
       )}
     </div>
@@ -174,7 +90,6 @@ export default function AddProperty() {
   const [searchParams] = useSearchParams();
   const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-  // ✅ EDIT MODE DETECTION
   const editId = searchParams.get('edit');
   const isEditMode = !!editId;
 
@@ -183,666 +98,340 @@ export default function AddProperty() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [gettingLocation, setGettingLocation] = useState(false);
-
-  // Map state
   const [selectedPosition, setSelectedPosition] = useState<[number, number] | null>(null);
-  const [mapCenter, setMapCenter] = useState<[number, number]>([20.5937, 78.9629]); // India center
+  const [mapCenter, setMapCenter] = useState<[number, number]>([20.5937, 78.9629]);
 
   const [formData, setFormData] = useState({
-    name: '',
-    type: 'hostel',
-    address: '',
-    city: '',
-    state: '',
-    pincode: '',
-    contactPhone: '',
-    description: '',
-    pricePerMonth: '',
-    totalRooms: '',
-    amenities: [] as string[]
+    name: '', type: 'hostel', address: '', city: '', state: '', pincode: '',
+    contactPhone: '', description: '', pricePerMonth: '', totalRooms: '', amenities: [] as string[],
   });
 
-  const amenitiesList = [
-    'WiFi', 'AC', 'Parking', 'Laundry', 'Mess/Food', 
-    'Gym', 'Security', 'CCTV', 'Power Backup', 'Water Supply',
-    'Attached Bathroom', 'Study Room', 'Common Area'
-  ];
+  const amenitiesList = ['WiFi', 'AC', 'Parking', 'Laundry', 'Mess/Food', 'Gym', 'Security', 'CCTV', 'Power Backup', 'Water Supply', 'Attached Bathroom', 'Study Room', 'Common Area'];
 
-  // ✅ FETCH EXISTING PROPERTY DATA FOR EDIT MODE
-  useEffect(() => {
-    if (isEditMode && editId) {
-      fetchPropertyData();
-    }
-  }, [editId, isEditMode]);
+  useEffect(() => { if (isEditMode && editId) fetchPropertyData(); }, [editId]);
 
   const fetchPropertyData = async () => {
     setFetchingProperty(true);
-    setError('');
-    
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API}/api/accommodations/${editId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      const data = await response.json();
-      
+      const res = await fetch(`${API}/api/accommodations/${editId}`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
       if (data.success && data.data) {
-        const property = data.data;
-        
-        // Pre-fill form with existing data
-        setFormData({
-          name: property.name || '',
-          type: property.type || 'hostel',
-          address: property.address || '',
-          city: property.city || '',
-          state: property.state || '',
-          pincode: property.pincode || '',
-          contactPhone: property.contactPhone || '',
-          description: property.description || '',
-          pricePerMonth: property.pricePerMonth?.toString() || '',
-          totalRooms: property.totalRooms?.toString() || '',
-          amenities: property.amenities || []
-        });
-        
-        // Set map position if coordinates exist
-        if (property.latitude && property.longitude) {
-          const pos: [number, number] = [property.latitude, property.longitude];
-          setSelectedPosition(pos);
-          setMapCenter(pos);
-        }
-      } else {
-        setError('Failed to load property data');
-      }
-    } catch (err) {
-      console.error('Fetch property error:', err);
-      setError('Error loading property data');
-    } finally {
-      setFetchingProperty(false);
-    }
+        const p = data.data;
+        setFormData({ name: p.name || '', type: p.type || 'hostel', address: p.address || '', city: p.city || '', state: p.state || '', pincode: p.pincode || '', contactPhone: p.contactPhone || '', description: p.description || '', pricePerMonth: p.pricePerMonth?.toString() || '', totalRooms: p.totalRooms?.toString() || '', amenities: p.amenities || [] });
+        if (p.latitude && p.longitude) { const pos: [number, number] = [p.latitude, p.longitude]; setSelectedPosition(pos); setMapCenter(pos); }
+      } else setError('Failed to load property data');
+    } catch { setError('Error loading property data'); }
+    finally { setFetchingProperty(false); }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setFormData({ ...formData, [e.target.name]: e.target.value });
+  const toggleAmenity = (a: string) => setFormData(p => ({ ...p, amenities: p.amenities.includes(a) ? p.amenities.filter(x => x !== a) : [...p.amenities, a] }));
+
+  const handleLocationSelect = (lat: number, lng: number, addr: string) => {
+    setSelectedPosition([lat, lng]); setMapCenter([lat, lng]);
+    const parts = addr.split(',').map(p => p.trim());
+    setFormData(p => ({ ...p, address: parts.slice(0, -2).join(', ') || addr, city: p.city || parts[0], state: p.state || parts[parts.length - 2] || '' }));
   };
 
-  const toggleAmenity = (amenity: string) => {
-    setFormData(prev => ({
-      ...prev,
-      amenities: prev.amenities.includes(amenity)
-        ? prev.amenities.filter(a => a !== amenity)
-        : [...prev.amenities, amenity]
-    }));
-  };
-
-  // Handle location selection from search
-  const handleLocationSelect = (lat: number, lng: number, address: string) => {
-    setSelectedPosition([lat, lng]);
-    setMapCenter([lat, lng]);
-    
-    const parts = address.split(',').map(p => p.trim());
-    if (parts.length >= 2) {
-      const possibleCity = parts[0] || parts[1];
-      const possibleState = parts[parts.length - 2] || '';
-      
-      setFormData(prev => ({
-        ...prev,
-        address: parts.slice(0, -2).join(', ') || address,
-        city: prev.city || possibleCity,
-        state: prev.state || possibleState
-      }));
-    }
-  };
-
-  // Handle map position change
   const handlePositionChange = async (pos: [number, number]) => {
     setSelectedPosition(pos);
-    
     try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos[0]}&lon=${pos[1]}`
-      );
-      const data = await response.json();
-      
-      if (data.address) {
-        setFormData(prev => ({
-          ...prev,
-          address: data.display_name?.split(',').slice(0, 3).join(',') || prev.address,
-          city: data.address.city || data.address.town || data.address.village || prev.city,
-          state: data.address.state || prev.state,
-          pincode: data.address.postcode || prev.pincode
-        }));
-      }
-    } catch (error) {
-      console.error('Reverse geocoding error:', error);
-    }
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos[0]}&lon=${pos[1]}`);
+      const data = await res.json();
+      if (data.address) setFormData(p => ({ ...p, address: data.display_name?.split(',').slice(0, 3).join(',') || p.address, city: data.address.city || data.address.town || data.address.village || p.city, state: data.address.state || p.state, pincode: data.address.postcode || p.pincode }));
+    } catch {}
   };
 
-  // Get current location
   const getCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser');
-      return;
-    }
-
+    if (!navigator.geolocation) { alert('Geolocation not supported'); return; }
     setGettingLocation(true);
     navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const pos: [number, number] = [position.coords.latitude, position.coords.longitude];
-        setSelectedPosition(pos);
-        setMapCenter(pos);
-        await handlePositionChange(pos);
-        setGettingLocation(false);
-      },
-      (error) => {
-        console.error('Geolocation error:', error);
-        alert('Unable to get your location. Please select manually on the map.');
-        setGettingLocation(false);
-      },
+      async (pos) => { const p: [number, number] = [pos.coords.latitude, pos.coords.longitude]; setSelectedPosition(p); setMapCenter(p); await handlePositionChange(p); setGettingLocation(false); },
+      () => { alert('Unable to get location.'); setGettingLocation(false); },
       { enableHighAccuracy: true, timeout: 10000 }
     );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-
-    // Validation for required fields
-    if (!selectedPosition) {
-      setError('Please select a location on the map');
-      return;
-    }
-
-    if (!formData.name.trim()) {
-      setError('Property name is required');
-      return;
-    }
-
-    if (!formData.address.trim()) {
-      setError('Address is required');
-      return;
-    }
-
-    if (!formData.city.trim()) {
-      setError('City is required');
-      return;
-    }
-
-    if (!formData.description.trim()) {
-      setError('Description is required');
-      return;
-    }
-
-    if (!formData.totalRooms || parseInt(formData.totalRooms) <= 0) {
-      setError('Total rooms is required (must be greater than 0)');
-      return;
-    }
-
-    if (!formData.pricePerMonth || parseInt(formData.pricePerMonth) <= 0) {
-      setError('Price per month is required (must be greater than 0)');
-      return;
-    }
-
-    if (!formData.contactPhone.trim()) {
-      setError('Contact phone is required');
-      return;
-    }
+    e.preventDefault(); setError('');
+    if (!selectedPosition) { setError('Please select a location on the map'); return; }
+    if (!formData.name.trim()) { setError('Property name is required'); return; }
+    if (!formData.address.trim()) { setError('Address is required'); return; }
+    if (!formData.city.trim()) { setError('City is required'); return; }
+    if (!formData.description.trim()) { setError('Description is required'); return; }
+    if (!formData.totalRooms || parseInt(formData.totalRooms) <= 0) { setError('Total rooms must be greater than 0'); return; }
+    if (!formData.pricePerMonth || parseInt(formData.pricePerMonth) <= 0) { setError('Price per month must be greater than 0'); return; }
+    if (!formData.contactPhone.trim()) { setError('Contact phone is required'); return; }
 
     setLoading(true);
-
-    // Prepare data matching schema exactly
-    const requestData = {
-      name: formData.name.trim(),
-      address: formData.address.trim(),
-      city: formData.city.trim(),
-      description: formData.description.trim(),
-      totalRooms: parseInt(formData.totalRooms),
-      pricePerMonth: parseInt(formData.pricePerMonth),
-      contactPhone: formData.contactPhone.trim(),
-      amenities: formData.amenities,
-      latitude: selectedPosition[0],
-      longitude: selectedPosition[1],
-      location: {
-        type: 'Point',
-        coordinates: [selectedPosition[1], selectedPosition[0]] // GeoJSON: [lng, lat]
-      }
-    };
-
-    console.log('Sending data:', requestData);
+    const requestData = { name: formData.name.trim(), address: formData.address.trim(), city: formData.city.trim(), description: formData.description.trim(), totalRooms: parseInt(formData.totalRooms), pricePerMonth: parseInt(formData.pricePerMonth), contactPhone: formData.contactPhone.trim(), amenities: formData.amenities, latitude: selectedPosition[0], longitude: selectedPosition[1], location: { type: 'Point', coordinates: [selectedPosition[1], selectedPosition[0]] } };
 
     try {
       const token = localStorage.getItem('token');
-      
-      // ✅ USE PUT FOR EDIT, POST FOR ADD
-      const url = isEditMode 
-        ? `${API}/api/owner/accommodations/${editId}` 
-        : `${API}/api/owner/accommodations`;
-      
-      const method = isEditMode ? 'PUT' : 'POST';
-      
-      const response = await fetch(url, {
-        method: method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(requestData)
-      });
-
-      const data = await response.json();
-      console.log('Response:', data);
-
-      if (response.ok && data.success) {
-        setSuccess(true);
-        setTimeout(() => {
-          navigate('/owner/dashboard');
-        }, 2000);
-      } else {
-        setError(data.message || `Failed to ${isEditMode ? 'update' : 'add'} property. Please check all fields.`);
-      }
-    } catch (err) {
-      console.error('Property error:', err);
-      setError('Connection error. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+      const url = isEditMode ? `${API}/api/owner/accommodations/${editId}` : `${API}/api/owner/accommodations`;
+      const res = await fetch(url, { method: isEditMode ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(requestData) });
+      const data = await res.json();
+      if (res.ok && data.success) { setSuccess(true); setTimeout(() => navigate('/owner/dashboard'), 2000); }
+      else setError(data.message || `Failed to ${isEditMode ? 'update' : 'add'} property.`);
+    } catch { setError('Connection error. Please try again.'); }
+    finally { setLoading(false); }
   };
 
-  // ✅ LOADING STATE FOR EDIT MODE
-  if (fetchingProperty) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="flex flex-col items-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading property data...</p>
-        </div>
-      </div>
-    );
-  }
+  if (fetchingProperty) return <PageLoader />;
 
-  if (success) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="bg-white p-12 rounded-3xl shadow-xl text-center max-w-md">
-          <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <FiCheck className="h-10 w-10 text-emerald-600" />
-          </div>
-          <h2 className="text-2xl font-black text-slate-900 mb-2">
-            {isEditMode ? 'Property Updated!' : 'Property Added!'}
-          </h2>
-          <p className="text-slate-500 mb-6">
-            {isEditMode 
-              ? 'Your property has been updated successfully.' 
-              : 'Your property has been registered successfully.'
-            } Redirecting to dashboard...
-          </p>
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600 mx-auto"></div>
+  if (success) return (
+    <>
+      <style>{CSS}</style>
+      <div className="ap-success-page">
+        <div className="ap-success-card glass-hi fade-up">
+          <div className="ap-success-icon">✓</div>
+          <h2 className="ap-success-title">{isEditMode ? 'Property Updated!' : 'Property Added!'}</h2>
+          <p className="ap-success-sub">Redirecting to dashboard…</p>
+          <Spinner size={28} color="var(--emerald)" />
         </div>
       </div>
-    );
-  }
+    </>
+  );
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-20">
-      {/* Header */}
-      <div className="bg-slate-900 text-white pt-10 pb-20">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <Link 
-            to="/owner/dashboard" 
-            className="inline-flex items-center gap-2 text-emerald-400 hover:text-emerald-300 font-bold mb-8 transition-colors"
-          >
-            <FiArrowLeft /> Back to Dashboard
-          </Link>
-          {/* ✅ DYNAMIC TITLE BASED ON MODE */}
-          <h1 className="text-3xl font-black tracking-tight mb-2 flex items-center gap-3">
-            {isEditMode ? (
-              <>
-                <FiEdit3 className="text-emerald-400" /> Edit Property
-              </>
-            ) : (
-              <>
-                <FiHome className="text-emerald-400" /> Add New Property
-              </>
-            )}
-          </h1>
-          <p className="text-slate-400 font-medium">
-            {isEditMode 
-              ? 'Update your property details below' 
-              : 'Register your accommodation to start building trust with students'
-            }
-          </p>
+    <>
+      <style>{CSS}</style>
+      <div className="ap-page">
+
+        {/* Header */}
+        <header className="ap-header fade-up">
+          <div className="ap-header-inner">
+            <Link to="/owner/dashboard" className="ap-back-link">← Back to Dashboard</Link>
+            <p className="ap-eyebrow">Owner Portal</p>
+            <h1 className="ap-title">{isEditMode ? '✏️ Edit Property' : '🏠 Add New Property'}</h1>
+            <p className="ap-sub">{isEditMode ? 'Update your property details below' : 'Register your accommodation to start building trust with students'}</p>
+          </div>
+        </header>
+
+        <div className="ap-body">
+          <form onSubmit={handleSubmit} className="ap-form glass fade-up fade-up-2">
+
+            {error && <div className="ss-error" style={{ marginBottom: 24 }}>{error}</div>}
+            {isEditMode && <div className="ss-success" style={{ marginBottom: 20 }}>✏️ You are editing an existing property.</div>}
+
+            {/* Section: Basic Info */}
+            <div className="ap-section">
+              <h2 className="ap-section-title">🏠 Basic Information</h2>
+              <div className="ap-grid-2">
+                <div className="field-group">
+                  <label className="field-label">Property Name *</label>
+                  <input name="name" type="text" className="ss-input" placeholder="e.g. Sunshine Hostel" value={formData.name} onChange={handleChange} required />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Property Type *</label>
+                  <select name="type" className="ss-input" value={formData.type} onChange={handleChange} style={{ appearance: 'none', cursor: 'pointer' }}>
+                    <option value="hostel">Hostel</option>
+                    <option value="pg">PG (Paying Guest)</option>
+                    <option value="apartment">Apartment</option>
+                    <option value="flat">Flat</option>
+                    <option value="room">Single Room</option>
+                  </select>
+                </div>
+              </div>
+              <div className="field-group">
+                <label className="field-label">Description *</label>
+                <textarea name="description" className="ss-input ap-textarea" placeholder="Describe your property, facilities, rules, nearby landmarks…" value={formData.description} onChange={handleChange} required />
+              </div>
+            </div>
+
+            {/* Section: Location + Map */}
+            <div className="ap-section">
+              <h2 className="ap-section-title">📍 Select Location on Map *</h2>
+
+              <div style={{ marginBottom: 14 }}>
+                <SearchControl onLocationSelect={handleLocationSelect} />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+                <button type="button" onClick={getCurrentLocation} disabled={gettingLocation} className="ss-btn ss-btn-ghost" style={{ fontSize: 13 }}>
+                  {gettingLocation ? <Spinner size={14} /> : '📍'} Use My Location
+                </button>
+                <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Or click directly on the map</span>
+              </div>
+
+              <div className="ap-map-wrap">
+                <MapContainer center={mapCenter} zoom={isEditMode && selectedPosition ? 16 : 5} style={{ height: '380px', width: '100%' }}>
+                  <TileLayer attribution='&copy; OpenStreetMap' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                  <LocationMarker position={selectedPosition} setPosition={handlePositionChange} />
+                  <FlyToLocation position={selectedPosition} />
+                </MapContainer>
+              </div>
+
+              {selectedPosition ? (
+                <div className="ap-coords-ok">
+                  <span style={{ color: 'var(--emerald)' }}>✓</span>
+                  <span>Location selected: {selectedPosition[0].toFixed(5)}, {selectedPosition[1].toFixed(5)}</span>
+                </div>
+              ) : (
+                <div className="ap-coords-warn">⚠️ Please select a location on the map by clicking or using search/GPS</div>
+              )}
+
+              <div style={{ marginTop: 20 }}>
+                <div className="field-group">
+                  <label className="field-label">Full Address *</label>
+                  <input name="address" type="text" className="ss-input" placeholder="Building name, street, area" value={formData.address} onChange={handleChange} required />
+                </div>
+                <div className="ap-grid-3">
+                  <div className="field-group">
+                    <label className="field-label">City *</label>
+                    <input name="city" type="text" className="ss-input" placeholder="e.g. Hyderabad" value={formData.city} onChange={handleChange} required />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">State</label>
+                    <input name="state" type="text" className="ss-input" placeholder="e.g. Telangana" value={formData.state} onChange={handleChange} />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Pincode</label>
+                    <input name="pincode" type="text" className="ss-input" placeholder="e.g. 500001" value={formData.pincode} onChange={handleChange} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Section: Contact */}
+            <div className="ap-section">
+              <h2 className="ap-section-title">📞 Contact Information</h2>
+              <div className="field-group">
+                <label className="field-label">Contact Phone *</label>
+                <input name="contactPhone" type="tel" className="ss-input" placeholder="+91 9876543210" value={formData.contactPhone} onChange={handleChange} required />
+              </div>
+            </div>
+
+            {/* Section: Pricing */}
+            <div className="ap-section">
+              <h2 className="ap-section-title">💰 Pricing & Capacity</h2>
+              <div className="ap-grid-2">
+                <div className="field-group">
+                  <label className="field-label">Price Per Month (₹) *</label>
+                  <input name="pricePerMonth" type="number" min="1" className="ss-input" placeholder="e.g. 5000" value={formData.pricePerMonth} onChange={handleChange} required />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Total Rooms *</label>
+                  <input name="totalRooms" type="number" min="1" className="ss-input" placeholder="e.g. 20" value={formData.totalRooms} onChange={handleChange} required />
+                </div>
+              </div>
+            </div>
+
+            {/* Section: Amenities */}
+            <div className="ap-section">
+              <h2 className="ap-section-title">✨ Amenities (Optional)</h2>
+              <div className="ap-amenities">
+                {amenitiesList.map(a => (
+                  <button key={a} type="button" onClick={() => toggleAmenity(a)}
+                    className={`ap-amenity-btn ${formData.amenities.includes(a) ? 'ap-amenity-active' : ''}`}>
+                    {formData.amenities.includes(a) ? '✓ ' : ''}{a}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Submit */}
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button type="submit" disabled={loading || !selectedPosition} className="ss-btn ss-btn-emerald" style={{ flex: 1 }}>
+                {loading ? <Spinner /> : null}
+                {loading ? (isEditMode ? 'Updating…' : 'Adding Property…') : (isEditMode ? '✓ Update Property' : '🏠 Add Property')}
+              </button>
+              <Link to="/owner/dashboard" className="ss-btn ss-btn-ghost" style={{ textDecoration: 'none', padding: '13px 24px' }}>Cancel</Link>
+            </div>
+          </form>
         </div>
       </div>
-
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 -mt-10">
-        <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-xl p-8 lg:p-12">
-          
-          {/* Error Message */}
-          {error && (
-            <div className="mb-8 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3">
-              <FiAlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
-              <p className="text-sm font-bold text-red-700">{error}</p>
-            </div>
-          )}
-
-          {/* Edit Mode Notice */}
-          {isEditMode && (
-            <div className="mb-8 p-4 bg-emerald-50 border border-emerald-100 rounded-xl flex items-start gap-3">
-              <FiEdit3 className="h-5 w-5 text-emerald-600 flex-shrink-0 mt-0.5" />
-              <p className="text-sm font-bold text-emerald-700">
-                You are editing an existing property. Changes will be saved when you click "Update Property".
-              </p>
-            </div>
-          )}
-
-          {/* Required Fields Notice */}
-          <div className="mb-8 p-4 bg-blue-50 border border-blue-100 rounded-xl">
-            <p className="text-sm text-blue-700">
-              <span className="font-bold">Note:</span> Fields marked with <span className="text-red-500">*</span> are required
-            </p>
-          </div>
-
-          {/* Basic Information */}
-          <div className="mb-10">
-            <h2 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-2">
-              <FiHome className="text-emerald-600" /> Basic Information
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-2">
-                  Property Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  name="name"
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-xl focus:bg-white focus:border-emerald-500 outline-none transition-all font-semibold"
-                  placeholder="e.g., Sunshine Hostel"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-2">
-                  Property Type <span className="text-red-500">*</span>
-                </label>
-                <select
-                  name="type"
-                  value={formData.type}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-xl focus:bg-white focus:border-emerald-500 outline-none transition-all font-semibold cursor-pointer"
-                >
-                  <option value="hostel">Hostel</option>
-                  <option value="pg">PG (Paying Guest)</option>
-                  <option value="apartment">Apartment</option>
-                  <option value="flat">Flat</option>
-                  <option value="room">Single Room</option>
-                </select>
-              </div>
-            </div>
-            <div className="mt-6">
-              <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-2">
-                Description <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                name="description"
-                value={formData.description}
-                onChange={handleChange}
-                required
-                rows={3}
-                className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-xl focus:bg-white focus:border-emerald-500 outline-none transition-all font-semibold resize-none"
-                placeholder="Describe your property, facilities, rules, nearby landmarks, etc."
-              />
-            </div>
-          </div>
-
-          {/* Location with Map */}
-          <div className="mb-10">
-            <h2 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-2">
-              <FiMapPin className="text-emerald-600" /> Select Location on Map <span className="text-red-500">*</span>
-            </h2>
-            
-            {/* Search and GPS buttons */}
-            <div className="mb-4 space-y-4">
-              <SearchControl onLocationSelect={handleLocationSelect} />
-              
-              <div className="flex items-center gap-4">
-                <button
-                  type="button"
-                  onClick={getCurrentLocation}
-                  disabled={gettingLocation}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm transition-all disabled:opacity-50"
-                >
-                  {gettingLocation ? (
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <FiNavigation />
-                  )}
-                  Use My Location
-                </button>
-                
-                <span className="text-sm text-slate-500">
-                  Or click directly on the map to select location
-                </span>
-              </div>
-            </div>
-
-            {/* Map Container */}
-            <div className="rounded-2xl overflow-hidden border-2 border-slate-200 shadow-lg">
-              <MapContainer
-                center={mapCenter}
-                zoom={isEditMode && selectedPosition ? 16 : 5}
-                style={{ height: '400px', width: '100%' }}
-                className="z-0"
-              >
-                <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
-                <LocationMarker position={selectedPosition} setPosition={handlePositionChange} />
-                <FlyToLocation position={selectedPosition} />
-              </MapContainer>
-            </div>
-
-            {/* Selected Coordinates Display */}
-            {selectedPosition && (
-              <div className="mt-4 p-4 bg-emerald-50 rounded-xl border border-emerald-200">
-                <div className="flex items-center gap-2 text-emerald-700 font-bold mb-2">
-                  <FiCheck className="text-emerald-600" />
-                  Location Selected
-                </div>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-slate-500">Latitude:</span>
-                    <span className="ml-2 font-mono font-bold text-slate-900">{selectedPosition[0].toFixed(6)}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500">Longitude:</span>
-                    <span className="ml-2 font-mono font-bold text-slate-900">{selectedPosition[1].toFixed(6)}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {!selectedPosition && (
-              <div className="mt-4 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
-                <p className="text-yellow-700 text-sm font-semibold">
-                  ⚠️ Please select a location on the map by clicking or using search/GPS
-                </p>
-              </div>
-            )}
-
-            {/* Address Fields */}
-            <div className="mt-6 space-y-6">
-              <div>
-                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-2">
-                  Full Address <span className="text-red-500">*</span>
-                </label>
-                <input
-                  name="address"
-                  type="text"
-                  required
-                  value={formData.address}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-xl focus:bg-white focus:border-emerald-500 outline-none transition-all font-semibold"
-                  placeholder="Building name, street, area"
-                />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div>
-                  <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-2">
-                    City <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    name="city"
-                    type="text"
-                    required
-                    value={formData.city}
-                    onChange={handleChange}
-                    className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-xl focus:bg-white focus:border-emerald-500 outline-none transition-all font-semibold"
-                    placeholder="e.g., Hyderabad"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-2">State</label>
-                  <input
-                    name="state"
-                    type="text"
-                    value={formData.state}
-                    onChange={handleChange}
-                    className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-xl focus:bg-white focus:border-emerald-500 outline-none transition-all font-semibold"
-                    placeholder="e.g., Telangana"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-2">Pincode</label>
-                  <input
-                    name="pincode"
-                    type="text"
-                    value={formData.pincode}
-                    onChange={handleChange}
-                    className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-xl focus:bg-white focus:border-emerald-500 outline-none transition-all font-semibold"
-                    placeholder="e.g., 500001"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Contact */}
-          <div className="mb-10">
-            <h2 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-2">
-              <FiPhone className="text-emerald-600" /> Contact Information
-            </h2>
-            <div>
-              <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-2">
-                Contact Phone <span className="text-red-500">*</span>
-              </label>
-              <input
-                name="contactPhone"
-                type="tel"
-                required
-                value={formData.contactPhone}
-                onChange={handleChange}
-                className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-xl focus:bg-white focus:border-emerald-500 outline-none transition-all font-semibold"
-                placeholder="e.g., +91 9876543210"
-              />
-            </div>
-          </div>
-
-          {/* Pricing & Capacity */}
-          <div className="mb-10">
-            <h2 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-2">
-              <FiDollarSign className="text-emerald-600" /> Pricing & Capacity
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-2">
-                  Price Per Month (₹) <span className="text-red-500">*</span>
-                </label>
-                <input
-                  name="pricePerMonth"
-                  type="number"
-                  required
-                  min="1"
-                  value={formData.pricePerMonth}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-xl focus:bg-white focus:border-emerald-500 outline-none transition-all font-semibold"
-                  placeholder="e.g., 5000"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-2">
-                  Total Rooms <span className="text-red-500">*</span>
-                </label>
-                <input
-                  name="totalRooms"
-                  type="number"
-                  required
-                  min="1"
-                  value={formData.totalRooms}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent rounded-xl focus:bg-white focus:border-emerald-500 outline-none transition-all font-semibold"
-                  placeholder="e.g., 20"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Amenities */}
-          <div className="mb-10">
-            <h2 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-2">
-              <FiUsers className="text-emerald-600" /> Amenities (Optional)
-            </h2>
-            <div className="flex flex-wrap gap-3">
-              {amenitiesList.map((amenity) => (
-                <button
-                  key={amenity}
-                  type="button"
-                  onClick={() => toggleAmenity(amenity)}
-                  className={`px-4 py-2 rounded-xl font-semibold text-sm transition-all ${
-                    formData.amenities.includes(amenity)
-                      ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {formData.amenities.includes(amenity) && <FiCheck className="inline mr-1" />}
-                  {amenity}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Submit - ✅ DYNAMIC BUTTON TEXT */}
-          <div className="flex flex-col sm:flex-row gap-4">
-            <button
-              type="submit"
-              disabled={loading || !selectedPosition}
-              className="flex-1 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-lg shadow-xl shadow-emerald-200 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  {isEditMode ? 'Updating Property...' : 'Adding Property...'}
-                </>
-              ) : (
-                <>
-                  {isEditMode ? <FiEdit3 /> : <FiSave />}
-                  {isEditMode ? 'Update Property' : 'Add Property'}
-                </>
-              )}
-            </button>
-            <Link
-              to="/owner/dashboard"
-              className="py-4 px-8 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-lg transition-all text-center"
-            >
-              Cancel
-            </Link>
-          </div>
-        </form>
-      </div>
-    </div>
+    </>
   );
 }
+
+const CSS = `
+  .ap-page { min-height: 100vh; background: var(--void); padding-bottom: 80px; }
+
+  /* Success */
+  .ap-success-page { min-height: 100vh; background: var(--void); display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .ap-success-card { max-width: 400px; width: 100%; padding: 48px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .ap-success-icon { width: 72px; height: 72px; border-radius: 50%; background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.3); display: flex; align-items: center; justify-content: center; font-size: 28px; color: var(--emerald); }
+  .ap-success-title { font-size: 1.6rem; font-weight: 700; color: var(--text-1); letter-spacing: -0.03em; }
+  .ap-success-sub { font-size: 13px; color: var(--text-2); }
+
+  /* Header */
+  .ap-header {
+    background: rgba(5,5,10,0.96); border-bottom: 1px solid var(--border);
+    padding: 40px 0 36px; margin-bottom: 40px;
+  }
+  .ap-header-inner { max-width: 860px; margin: 0 auto; padding: 0 32px; }
+  .ap-back-link { display: inline-block; font-size: 12px; font-weight: 600; color: var(--emerald); text-decoration: none; margin-bottom: 20px; transition: color 0.2s; }
+  .ap-back-link:hover { color: #34d399; }
+  .ap-eyebrow { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: var(--emerald); margin-bottom: 10px; }
+  .ap-title { font-size: 2rem; font-weight: 700; letter-spacing: -0.04em; color: var(--text-1); margin-bottom: 6px; }
+  .ap-sub { font-size: 13px; color: var(--text-2); }
+
+  /* Body */
+  .ap-body { max-width: 860px; margin: 0 auto; padding: 0 32px; }
+
+  /* Form */
+  .ap-form { padding: 40px; }
+
+  .ap-section { margin-bottom: 36px; padding-bottom: 36px; border-bottom: 1px solid var(--border); }
+  .ap-section:last-of-type { border-bottom: none; margin-bottom: 24px; }
+  .ap-section-title { font-size: 15px; font-weight: 700; color: var(--text-1); margin-bottom: 20px; letter-spacing: -0.02em; }
+
+  .ap-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media(max-width: 600px) { .ap-grid-2 { grid-template-columns: 1fr; } }
+  .ap-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  @media(max-width: 600px) { .ap-grid-3 { grid-template-columns: 1fr; } }
+
+  .ap-textarea { resize: vertical; min-height: 100px; }
+  .field-group { margin-bottom: 16px; }
+
+  /* Map */
+  .ap-map-wrap {
+    border-radius: var(--r-md); overflow: hidden;
+    border: 1px solid var(--border); margin-bottom: 12px;
+  }
+
+  .ap-coords-ok {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; border-radius: var(--r-sm);
+    background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2);
+    font-size: 12px; font-weight: 600; color: var(--text-2);
+  }
+  .ap-coords-warn {
+    padding: 10px 14px; border-radius: var(--r-sm);
+    background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2);
+    font-size: 12px; color: var(--amber);
+  }
+
+  /* Search dropdown */
+  .ap-search-dropdown {
+    position: absolute; z-index: 1000; width: 100%; margin-top: 6px;
+    border-radius: var(--r-md); overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .ap-search-result {
+    width: 100%; padding: 12px 16px; text-align: left;
+    background: transparent; border: none; cursor: pointer;
+    border-bottom: 1px solid var(--border); transition: background 0.15s;
+  }
+  .ap-search-result:last-child { border-bottom: none; }
+  .ap-search-result:hover { background: rgba(255,255,255,0.04); }
+  .ap-search-result-name { font-size: 13px; font-weight: 600; color: var(--text-1); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ap-search-result-full { font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Amenities */
+  .ap-amenities { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ap-amenity-btn {
+    padding: 8px 16px; border-radius: 100px;
+    border: 1px solid var(--border); background: var(--panel);
+    cursor: pointer; font-family: var(--font-body); font-size: 12px; font-weight: 600;
+    color: var(--text-2); transition: all 0.2s;
+  }
+  .ap-amenity-btn:hover { border-color: rgba(16,185,129,0.3); color: var(--text-1); }
+  .ap-amenity-active {
+    border-color: rgba(16,185,129,0.5) !important;
+    background: rgba(16,185,129,0.1) !important;
+    color: var(--emerald) !important;
+  }
+`;
