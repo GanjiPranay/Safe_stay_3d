@@ -21,7 +21,7 @@ This leads to real-world risks:
 - Poor sanitation
 - Unsafe infrastructure
 - Security threats
-- Water quality issues
+- Water quality issues etc..
 
 This platform introduces **verified, accountable, student-driven safety intelligence**.
 
